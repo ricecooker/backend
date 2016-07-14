@@ -1,3 +1,7 @@
+-- Run user-audit.sql first
+-- At the bottom you will have to edit items in <>
+-- such as <PASS> and <YOUR-APP-USER>
+
 drop table if exists user_event;
 drop table if exists user_role;
 drop table if exists role_permission;
@@ -127,3 +131,18 @@ create table user_event (
 );
 
 create index idx_user_event_user_id on user_event(user_id);
+
+create role readonly login inherit password <PASS>;
+
+grant usage on schema audit to readonly;
+grant usage on schema public to readonly;
+grant select on all tables in schema audit to readonly;
+grant select on all tables in schema public to readonly;
+
+grant usage on schema audit to <YOUR-APP-USER>;
+grant usage on schema public to <YOUR-APP-USER>;
+grant select, insert on all tables in schema audit to <YOUR-APP-USER>;
+grant usage, select on all sequences in schema public to <YOUR-APP-USER>;
+
+revoke delete on "user" from <YOUR-APP-USER>;
+revoke update, delete on user_event from <YOUR-APP-USER>;
