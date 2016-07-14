@@ -131,6 +131,7 @@ create table user_event (
 );
 
 create index idx_user_event_user_id on user_event(user_id);
+create index idx_user_event_name on user_event(name);
 
 create role readonly login inherit password <PASS>;
 
