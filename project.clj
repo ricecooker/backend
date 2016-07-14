@@ -11,13 +11,10 @@
                  [metosin/ring-http-response "0.8.0"]
                  [ring-cors "0.1.7" :exclusions [ring/ring-core]]
                  [org.immutant/web "2.1.5"]
-                 [org.clojure/tools.nrepl "0.2.12"]
-
-                 ]
+                 [org.clojure/tools.nrepl "0.2.12"]]
 
   :source-paths ["src/clj"]
   :java-source-paths ["src/java"]
 
   :deploy-repositories [["releases" :clojars]
-                        ["snapshots" :clojars]]
-  )
+                        ["snapshots" :clojars]])
