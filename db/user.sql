@@ -9,6 +9,8 @@ drop table if exists role;
 drop table if exists permission;
 drop table if exists channel;
 drop table if exists channel_type;
+drop table if exists user_address;
+drop table if exists address;
 drop table if exists "user";
 
 
