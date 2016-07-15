@@ -67,6 +67,33 @@ create or replace function audit.channel_audit() returns trigger as $$
 $$
 language plpgsql;
 
+create table audit.user_address (
+    op char(1)
+  , ts timestamp
+  , username varchar(25)
+  , id integer
+  , user_id integer
+  , address_id integer
+  , created_at timestamp
+  , created_by integer
+);
+
+create or replace function audit.user_address_audit() returns trigger as $$
+  begin
+    if (TG_OP = 'DELETE') then
+      insert into audit.user_address select 'D', now(), user, old.*;
+      return old;
+    elsif (TG_OP = 'UPDATE') then
+      insert into audit.user_address select 'U', now(), user, new.*;
+      return new;
+    elsif (TG_OP = 'INSERT') then
+      insert into audit.user_address select 'I', now(), user, new.*;
+      return new;
+    end if;
+    return null;
+  end;
+$$
+language plpgsql;
 
 --
 -- Auth

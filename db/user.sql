@@ -39,7 +39,7 @@ create table channel_type (
 create unique index unq_channel_type_name on channel_type(name);
 
 insert into channel_type (name, created_by)
-  values ('tel',1), ('email',1), ('google',1);
+  values ('mobile',1), ('email',1), ('google',1);
 
 create table channel (
     id serial primary key
@@ -58,6 +58,32 @@ create table channel (
 create unique index unq_channel_channel_type_identifier on channel(channel_type_id,identifier);
 create index idx_channel_user_id on channel(user_id);
 
+create table address (
+   id serial primary key
+ , street_1    varchar(50)    not null
+ , street_2    varchar(20)    not null
+ , city        varchar(50)    not null
+ , state       char(2)        not null
+ , postal_code varchar(9)     not null
+ , lat         decimal(9,6)   not null
+ , lng         decimal(9,6)   not null
+ , created_at  timestamp      not null default now()
+ , created_by  integer        not null references "user"(id)
+);
+
+create table user_address (
+    id serial primary key
+  , user_id integer not null references "user"(id)
+  , address_id integer not null references address(id)
+  , created_at timestamp not null default now()
+  , created_by integer not null references "user"(id)
+);
+
+create unique index unq_user_address on user_address(user_id, address_id);
+
+create trigger tg_user_address_audit before insert or update or delete on user_address
+  for each row execute procedure audit.user_address_audit();
+
 --
 -- Auth
 --
@@ -73,7 +99,7 @@ create table "permission" (
 
 create unique index unq_permission_name on "permission"(name);
 
-create trigger tg_permission before insert or update or delete on "permission"
+create trigger tg_permission_audit before insert or update or delete on "permission"
   for each row execute procedure audit.permission_audit();
 
 create table "role" (
@@ -88,7 +114,7 @@ create table "role" (
 
 create unique index unq_role_name on "role"(name);
 
-create trigger tg_role before insert or update or delete on "role"
+create trigger tg_role_audit before insert or update or delete on "role"
   for each row execute procedure audit.role_audit();
 
 
@@ -102,7 +128,7 @@ create table role_permission (
 
 create unique index unq_role_permission on role_permission(role_id, permission_id);
 
-create trigger tg_role_permission before insert or update or delete on role_permission
+create trigger tg_role_permission_audit before insert or update or delete on role_permission
   for each row execute procedure audit.role_permission_audit();
 
 
@@ -116,7 +142,7 @@ create table user_role (
 
 create unique index unq_user_role on user_role(user_id, role_id);
 
-create trigger tg_user_role before insert or update or delete on user_role
+create trigger tg_user_role_audit before insert or update or delete on user_role
   for each row execute procedure audit.user_role_audit();
 
 --
@@ -147,3 +173,4 @@ grant usage, select on all sequences in schema public to <YOUR-APP-USER>;
 
 revoke delete on "user" from <YOUR-APP-USER>;
 revoke update, delete on user_event from <YOUR-APP-USER>;
+revoke update, delete on "address" from <YOUR-APP-USER>;
