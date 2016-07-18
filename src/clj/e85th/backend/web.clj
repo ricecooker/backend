@@ -1,5 +1,6 @@
 (ns e85th.backend.web
   (:require [ring.util.http-response :as http-response]
+            [compojure.api.meta :as meta]
             [schema.core :as s]))
 
 (defn text-response
@@ -26,3 +27,29 @@
   "Extracts the cookie's value otherwise returns nil"
   [request cookie-name]
   (get-in request [:cookies cookie-name :value]))
+
+
+(defn ensure-coll
+  [x]
+  (if (coll? x) x [x]))
+
+;; See https://github.com/metosin/compojure-api/wiki/Creating-your-own-metadata-handlers
+(defmethod meta/restructure-param :exists restructure-exists
+  [_ [item expr error-msg] {:keys [body] :as acc}]
+  (assert (symbol? item) "Please specify a symbol to bind the expression to for :exists.")
+  (assert expr "Please specify an expression for :exists")
+  (let [errors (ensure-coll (or error-msg "Resource not found."))]
+    (-> acc
+        (update-in [:letks] into [item expr])
+        (assoc :body `((if ~item
+                         (do ~@body)
+                         (http-response/not-found {:errors ~errors})))))))
+
+
+(defmethod meta/restructure-param :validate restructure-validate
+  [_ validate-expr {:keys [body] :as acc}]
+  (-> acc
+      (assoc :body `((let [errors# ~validate-expr]
+                       (if (seq errors#)
+                         (http-response/unprocessable-entity {:errors (ensure-coll errors#)})
+                         (do ~@body)))))))

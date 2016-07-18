@@ -16,5 +16,20 @@
   :source-paths ["src/clj"]
   :java-source-paths ["src/java"]
 
+  :profiles {:dev  [:project/dev  :profiles/dev]
+             :test [:project/test :profiles/test]
+             :profiles/dev  {}
+             :profiles/test {}
+             :project/dev   {:dependencies [[reloaded.repl "0.2.2"]
+                                            [org.clojure/tools.namespace "0.2.11"]
+                                            [org.clojure/tools.nrepl "0.2.12"]
+                                            [eftest "0.1.1"]
+                                            [e85th/test "0.1.0-SNAPSHOT"]]
+                             :source-paths   ["dev/src"]
+                             :resource-paths ["dev/resources"]
+                             :repl-options {:init-ns user}
+                             :env {:port "7000"}}
+             :project/test  {}}
+
   :deploy-repositories [["releases" :clojars]
                         ["snapshots" :clojars]])

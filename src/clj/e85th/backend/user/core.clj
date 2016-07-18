@@ -1,6 +1,7 @@
 (ns e85th.backend.user.core
   (:require [e85th.backend.user.db :as user-db]
             [e85th.backend.user.models :as m]
+            [e85th.commons.tel :as tel]
             [schema.core :as s]))
 
 (s/defn find-user-all-fields-by-id :- (s/maybe m/UserAllFields)
@@ -26,7 +27,7 @@
 (s/defn find-mobile-channel :- (s/maybe m/Channel)
   "Finds an mobile channel for the given mobile phone number."
   [{:keys [db]} mobile-nbr :- s/Str]
-  (user-db/select-channel-by-type db m/mobile-channel-id mobile-nbr))
+  (user-db/select-channel-by-type db m/mobile-channel-id (tel/normalize mobile-nbr)))
 
 (s/defn find-email-channel :- (s/maybe m/Channel)
   "Finds an email channel for the given email address."
@@ -35,7 +36,7 @@
 
 (s/defn create-user :- m/User
   "Creates a user in the db and returns the User record."
-  [{:keys [db] :as res} user :- m/NewUser user-id :- s/Int]
+  [{:keys [db publisher] :as res} user :- m/NewUser user-id :- s/Int]
   (->> (user-db/insert-user db user user-id)
        (find-user-by-id res)))
 
