@@ -11,7 +11,8 @@
             [ring.swagger.coerce :as rsc]
             [e85th.backend.web :as web]
             [e85th.commons.util :as u]
-            [compojure.api.middleware :as compojure-api-mw]))
+            [compojure.api.middleware :as compojure-api-mw])
+  (:import [e85th.commons.exception InvalidDataException NotFoundException]))
 
 (def coercion-matchers
   (merge compojure.api.middleware/default-coercion-matchers
@@ -62,3 +63,21 @@
                    (= uri "/swagger-ui.js")))
         (update-in response [:headers] dissoc "Content-Length")
         response))))
+
+(defn wrap-rest-exception-handling
+  [handler]
+  (fn [request]
+    (try
+      (handler request)
+      (catch NotFoundException ex
+        (http-response/not-found {:errors ["Resource not found."]}))
+      (catch InvalidDataException ex
+        (http-response/not-found {:errors (.getErrors ex)}))
+      (catch Exception ex
+        (if-let [{:keys [cause errors]} (ex-data ex)]
+          (let [resp-fn (condp = cause
+                          u/validation-exception http-response/unprocessable-entity
+                          u/not-found-exception http-response/not-found
+                          http-response/internal-server-error)]
+            (resp-fn {:errors errors}))
+          (throw ex))))))
