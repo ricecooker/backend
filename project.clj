@@ -9,7 +9,8 @@
                  [metosin/compojure-api "1.1.4"]
                  [metosin/ring-http-response "0.8.0"]
                  [ring-cors "0.1.7" :exclusions [ring/ring-core]]
-                 [org.immutant/web "2.1.5"]
+                 [org.immutant/web "2.1.5" :exclusions [ring/ring-core]]
+                 [http-kit "2.2.0"]
                  [org.clojure/tools.nrepl "0.2.12"]]
 
 

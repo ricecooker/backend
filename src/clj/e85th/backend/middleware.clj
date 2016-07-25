@@ -31,8 +31,10 @@
   [f context-str]
   (fn [{:keys [uri request-method] :as request}]
     (log/infof "%s %s %s" context-str request-method uri)
+    ;(log/infof "request is: %s" request)
     (let [{:keys [status body] :as response} (f request)]
       (log/infof "%s %s %s %s" context-str request-method uri status)
+      ;(println "status: " status " body: " (slurp body))
       (cond
         (#{400 401 403 422} status) (log/warnf "%s Request: %s, Response: %s" status (web/raw-request request) body)
         (= 500 status) (log/errorf "Request: %s, Response: %s" (web/raw-request request) body))
