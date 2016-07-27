@@ -11,8 +11,9 @@
             [ring.swagger.coerce :as rsc]
             [e85th.backend.web :as web]
             [e85th.commons.util :as u]
+            [e85th.commons.ex :as ex]
             [compojure.api.middleware :as compojure-api-mw])
-  (:import [e85th.commons.exception InvalidDataException NotFoundException]))
+  (:import [e85th.commons.exceptions InvalidDataException NotFoundException]))
 
 (def coercion-matchers
   (merge compojure.api.middleware/default-coercion-matchers
@@ -66,20 +67,32 @@
         (update-in response [:headers] dissoc "Content-Length")
         response))))
 
-(defn wrap-rest-exception-handling
-  [handler]
-  (fn [request]
+(defn wrap-log-request-outcome
+  [f]
+  (fn [{:keys [uri request-method] :as req}]
+    (log/infof "%s %s" request-method uri)
     (try
-      (handler request)
-      (catch NotFoundException ex
-        (http-response/not-found {:errors ["Resource not found."]}))
-      (catch InvalidDataException ex
-        (http-response/not-found {:errors (.getErrors ex)}))
+      (let [{:keys [status] :as resp} (f req)]
+        (log/infof "%s %s %s" request-method uri status)
+        resp)
+      (catch clojure.lang.ExceptionInfo ex
+        (let [{:keys [type error] :as data} (ex-data ex)
+              type (or type (ex/ex-type data))
+              errors (ex/ex-errors data)]
+          (condp = type
+            :compojure.api.exception/request-validation (do
+                                                          (log/infof "%s %s %s" request-method uri 400)
+                                                          (log/warnf "req %s, message: %s, error: %s" (web/raw-request req) (.getMessage ex) error)
+                                                          (compojure.api.exception/request-validation-handler ex data req))
+            ex/not-found (do
+                           (log/infof "%s %s %s" request-method uri 404)
+                           (http-response/not-found errors))
+            ex/validation (do
+                            (log/infof "%s %s %s" request-method uri 422)
+                            (http-response/unprocessable-entity errors))
+            (throw ex))))
       (catch Exception ex
-        (if-let [{:keys [cause errors]} (ex-data ex)]
-          (let [resp-fn (condp = cause
-                          u/validation-exception http-response/unprocessable-entity
-                          u/not-found-exception http-response/not-found
-                          http-response/internal-server-error)]
-            (resp-fn {:errors errors}))
-          (throw ex))))))
+        (let [uuid (u/uuid)]
+          (u/log-throwable ex uuid)
+          (log/errorf "req %s, message: %s" (web/raw-request req) (.getMessage ex))
+          (http-response/internal-server-error {:error (str "Unexpected server error. " uuid)}))))))

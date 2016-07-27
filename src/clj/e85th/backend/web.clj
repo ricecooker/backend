@@ -1,7 +1,12 @@
 (ns e85th.backend.web
   (:require [ring.util.http-response :as http-response]
             [compojure.api.meta :as meta]
+            [e85th.commons.util :as u]
+            [ring.swagger.json-schema :as json-schema]
+            [e85th.commons.geo] ; to load LatLng
             [schema.core :as s]))
+
+(defmethod json-schema/convert-class e85th.commons.geo.LatLng [_ _] {:type "map"})
 
 (defn text-response
   "Returns a ring response with content-type set to text/plain."
@@ -29,16 +34,14 @@
   (get-in request [:cookies cookie-name :value]))
 
 
-(defn ensure-coll
-  [x]
-  (if (coll? x) x [x]))
+
 
 ;; See https://github.com/metosin/compojure-api/wiki/Creating-your-own-metadata-handlers
 (defmethod meta/restructure-param :exists restructure-exists
   [_ [item expr error-msg] {:keys [body] :as acc}]
   (assert (symbol? item) "Please specify a symbol to bind the expression to for :exists.")
   (assert expr "Please specify an expression for :exists")
-  (let [errors (ensure-coll (or error-msg "Resource not found."))]
+  (let [errors (u/as-coll (or error-msg "Resource not found."))]
     (-> acc
         (update-in [:letks] into [item expr])
         (assoc :body `((if ~item
@@ -51,5 +54,5 @@
   (-> acc
       (assoc :body `((let [errors# ~validate-expr]
                        (if (seq errors#)
-                         (http-response/unprocessable-entity {:errors (ensure-coll errors#)})
+                         (http-response/unprocessable-entity {:errors (u/as-coll errors#)})
                          (do ~@body)))))))
