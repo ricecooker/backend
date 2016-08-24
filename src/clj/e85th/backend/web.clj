@@ -1,6 +1,7 @@
 (ns e85th.backend.web
   (:require [ring.util.http-response :as http-response]
             [compojure.api.meta :as meta]
+            ;[compojure.api.sweet :refer [defapi defroutes context GET POST ANY]]
             [e85th.commons.util :as u]
             [ring.swagger.json-schema :as json-schema]
             [e85th.commons.geo] ; to load LatLng
@@ -56,3 +57,56 @@
                        (if (seq errors#)
                          (http-response/unprocessable-entity {:errors (u/as-coll errors#)})
                          (do ~@body)))))))
+
+
+(defn wrap-authenticated
+  "This is a ring middleware handler."
+  [handler]
+  (fn [request]
+    (if (:identity request)
+      (handler request)
+      (http-response/unauthorized {:errors ["Not authenticated."]}))))
+
+;; Implementations must return a variant [authorized? msg]
+(defmulti authorized? :auth-type)
+
+;; allow permission and auth-fn to be nil
+;; sometimes you don't care about permission, just that the user is logged in
+(defmethod meta/restructure-param :auth restructure-auth
+  [_ [user permission-or-auth-fn auth-fn] {:keys [body] :as acc}]
+  (assert user "no user specified for :auth restructuring")
+  (let [perm-or-auth? (some? permission-or-auth-fn)
+        perm? (keyword? permission-or-auth-fn)
+        auth-fn? (some? auth-fn)
+        auth-params {:auth-type :standard
+                     :user user
+                     :permission (when perm? permission-or-auth-fn)
+                     :auth-fn (if perm? auth-fn permission-or-auth-fn)
+                     :request '+compojure-api-request+}]
+    (when auth-fn?
+      (assert perm-or-auth? "No permission specified as 2nd arg in :auth restructuring."))
+    (-> acc
+        (update-in [:middleware] conj wrap-authenticated)
+        (update-in [:lets] into [user '(:identity +compojure-api-request+)])
+        (assoc :body `((let [[authorized?# msg#] (authorized? ~auth-params)]
+                         (if authorized?#
+                           (do ~@body)
+                           (http-response/forbidden {:errors (u/as-coll msg#)}))))))))
+
+
+(comment
+  (macroexpand-1
+   `(GET "/admin" []
+      (ok {:message "welcome!"})))
+
+  (macroexpand-1
+   `(GET "/admin" []
+      :auth [foo-user jf]
+      (ok {:message "welcome!"})))
+
+  (macroexpand-1
+   `(defn do-something
+      [arg-1]
+      (let [let-1 20]
+        (* arg-1 let-1))))
+  )
