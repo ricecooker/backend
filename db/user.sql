@@ -18,7 +18,7 @@ create table "user" (
     id serial primary key
   , first_name varchar(50) not null
   , last_name varchar(50) not null
-  , password_digest char(60) null -- nullable ie if you use social login
+  , password_digest char(100) null -- nullable ie if you use social login
   , created_at timestamp not null default now()
   , created_by integer not null
   , updated_at timestamp not null default now()
@@ -46,7 +46,7 @@ insert into channel_type (name, created_by)
 create table channel (
     id serial primary key
   , user_id integer not null references "user"(id)
-  , channel_type_id integer not null references channel(id)
+  , channel_type_id integer not null references channel_type(id)
   , identifier varchar(50) not null -- email address, google id, phone #, etc
   , token varchar(50) null -- token used for verification
   , token_expiration timestamp null
@@ -62,16 +62,22 @@ create index idx_channel_user_id on channel(user_id);
 
 create table address (
    id serial primary key
- , street_1    varchar(50)    not null
- , street_2    varchar(20)    not null
+ , street_1    varchar(50)
+ , street_2    varchar(20)
  , city        varchar(50)    not null
- , state       char(2)        not null
- , postal_code varchar(9)     not null
- , lat         decimal(9,6)   not null
- , lng         decimal(9,6)   not null
+ , state       varchar(50)    not null
+ , postal_code varchar(9)
+ , lat         decimal(9,6)
+ , lng         decimal(9,6)
  , created_at  timestamp      not null default now()
  , created_by  integer        not null references "user"(id)
+ , updated_at  timestamp      not null default now()
+ , updated_by  integer        not null references "user"(id)
 );
+
+create trigger tg_address_audit before insert or update or delete on address
+for each row execute procedure audit.address_audit();
+
 
 create table user_address (
     id serial primary key
@@ -170,6 +176,7 @@ grant select on all tables in schema public to readonly;
 
 grant usage on schema audit to <YOUR-APP-USER>;
 grant usage on schema public to <YOUR-APP-USER>;
+grant select, insert, update, delete on all tables in schema public to <YOUR-APP-USER>;
 grant select, insert on all tables in schema audit to <YOUR-APP-USER>;
 grant usage, select on all sequences in schema public to <YOUR-APP-USER>;
 

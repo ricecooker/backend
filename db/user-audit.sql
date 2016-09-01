@@ -9,7 +9,7 @@ create table audit.user (
   , id integer
   , first_name varchar(50)
   , last_name varchar(50)
-  , password_digest char(60)
+  , password_digest char(100)
   , created_at timestamp
   , created_by integer
   , updated_at timestamp
@@ -66,6 +66,42 @@ create or replace function audit.channel_audit() returns trigger as $$
   end;
 $$
 language plpgsql;
+
+create table audit.address (
+   op          char(1)
+ , ts          timestamp
+ , username    varchar(25)
+ , id          integer
+ , street_1    varchar(50)
+ , street_2    varchar(20)
+ , city        varchar(50)
+ , state       varchar(50)
+ , postal_code varchar(9)
+ , lat         decimal(9,6)
+ , lng         decimal(9,6)
+ , created_at  timestamp
+ , created_by  integer
+ , updated_at  timestamp
+ , updated_by  integer
+);
+
+create or replace function audit.address_audit() returns trigger as $$
+  begin
+    if (TG_OP = 'DELETE') then
+      insert into audit.address select 'D', now(), user, old.*;
+      return old;
+    elsif (TG_OP = 'UPDATE') then
+      insert into audit.address select 'U', now(), user, new.*;
+      return new;
+    elsif (TG_OP = 'INSERT') then
+      insert into audit.address select 'I', now(), user, new.*;
+      return new;
+    end if;
+    return null;
+  end;
+$$
+language plpgsql;
+
 
 create table audit.user_address (
     op char(1)

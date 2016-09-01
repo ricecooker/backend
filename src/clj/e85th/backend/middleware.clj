@@ -70,7 +70,6 @@
 (defn wrap-log-request-outcome
   [f]
   (fn [{:keys [uri request-method] :as req}]
-    (log/infof "%s %s" request-method uri)
     (try
       (let [{:keys [status] :as resp} (f req)]
         (log/infof "%s %s %s" request-method uri status)
@@ -78,21 +77,21 @@
       (catch clojure.lang.ExceptionInfo ex
         (let [{:keys [type error] :as data} (ex-data ex)
               type (or type (ex/ex-type data))
-              errors (ex/ex-errors data)]
+              errors {:errors (ex/ex-errors data)}]
           (condp = type
             :compojure.api.exception/request-validation (do
-                                                          (log/infof "%s %s %s" request-method uri 400)
+                                                          (log/infof "%s %s 400" request-method uri)
                                                           (log/warnf "req %s, message: %s, error: %s" (web/raw-request req) (.getMessage ex) error)
                                                           (compojure.api.exception/request-validation-handler ex data req))
             ex/not-found (do
-                           (log/infof "%s %s %s" request-method uri 404)
+                           (log/infof "%s %s 404" request-method uri)
                            (http-response/not-found errors))
             ex/validation (do
-                            (log/infof "%s %s %s" request-method uri 422)
+                            (log/infof "%s %s 422" request-method uri)
                             (http-response/unprocessable-entity errors))
             (throw ex))))
       (catch Exception ex
         (let [uuid (u/uuid)]
           (u/log-throwable ex uuid)
           (log/errorf "req %s, message: %s" (web/raw-request req) (.getMessage ex))
-          (http-response/internal-server-error {:error (str "Unexpected server error. " uuid)}))))))
+          (http-response/internal-server-error {:errors [(str "Unexpected server error. " uuid)]}))))))
