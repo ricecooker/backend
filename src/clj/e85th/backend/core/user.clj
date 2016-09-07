@@ -9,6 +9,8 @@
             [clojure.set :as set]
             [schema.core :as s]))
 
+(def duplicate-channel-ex ::duplicate-channel-ex)
+
 (s/defn find-user-all-fields-by-id :- (s/maybe m/UserAllFields)
   "This exists to make it a little bit harder to expose the password digest."
   [{:keys [db]} id :- s/Int]
@@ -62,13 +64,18 @@
        (find-channel-by-id res)))
 
 ;; -- New User
+(s/defn filter-existing-identifiers :- [m/ChannelIdentifier]
+  [res channels :- [m/ChannelIdentifier]]
+  (let [chan-exists? (fn [{:keys [channel-type-id identifier]}]
+                       (some? (find-channel-by-type res channel-type-id identifier)))]
+    (doall (filter chan-exists? channels))))
+
 (s/defn validate-channel-identifiers
   "Validates that the channel identifier are not already present.
    Throws a validation exception when an identifier exists."
   [res {:keys [channels]} :- m/NewUser]
-  (doseq [{:keys [channel-type-id identifier]} channels]
-    (when (find-channel-by-type res channel-type-id identifier)
-      (throw (ex/new-validation-exception (format "Identifier %s already exists." identifier))))))
+  (when-let [{:keys [identifier]} (first (filter-existing-identifiers res channels))]
+    (throw (ex/new-validation-exception duplicate-channel-ex (format "Identifier %s already exists." identifier)))))
 
 (s/defn validate-new-user
   [res {:keys [channel-type-id password] :as new-user} :- m/NewUser]

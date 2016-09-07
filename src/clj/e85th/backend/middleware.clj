@@ -74,21 +74,24 @@
       (let [{:keys [status] :as resp} (f req)]
         (log/infof "%s %s %s" request-method uri status)
         resp)
+      (catch e85th.commons.exceptions.ValidationExceptionInfo ex
+        (log/infof "%s %s 422" request-method uri)
+        (http-response/unprocessable-entity {:errors (-> ex ex/type+msgs second)}))
       (catch clojure.lang.ExceptionInfo ex
-        (let [{:keys [type error] :as data} (ex-data ex)
-              type (or type (ex/ex-type data))
-              errors {:errors (ex/ex-errors data)}]
-          (condp = type
+        (let [{:keys [type error] :as data} (ex-data ex) ;; compojure api exceptions
+              [ex-type ex-msgs] (ex/type+msgs ex)
+              ;; normalize to have just one type, errors
+              ex-type (or type ex-type)
+              errors {:errors (or error ex-msgs)}]
+          (condp = ex-type
             :compojure.api.exception/request-validation (do
                                                           (log/infof "%s %s 400" request-method uri)
-                                                          (log/warnf "req %s, message: %s, error: %s" (web/raw-request req) (.getMessage ex) error)
+                                                          (log/warnf "req %s, message: %s" (web/raw-request req) (.getMessage ex))
                                                           (compojure.api.exception/request-validation-handler ex data req))
             ex/not-found (do
                            (log/infof "%s %s 404" request-method uri)
                            (http-response/not-found errors))
-            ex/validation (do
-                            (log/infof "%s %s 422" request-method uri)
-                            (http-response/unprocessable-entity errors))
+            ;; nothing matched, rethrow
             (throw ex))))
       (catch Exception ex
         (let [uuid (u/uuid)]

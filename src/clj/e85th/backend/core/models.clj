@@ -52,10 +52,14 @@
    :last-name s/Str
    :password-digest (s/maybe s/Str)})
 
+(s/defschema ChannelIdentifier
+  {:channel-type-id s/Int
+   :identifier s/Str})
+
 (s/defschema NewUser
   {:first-name s/Str
    :last-name s/Str
-   :channels [{:channel-type-id s/Int :identifier s/Str}]
+   :channels [ChannelIdentifier]
    :roles #{s/Int}
    (s/optional-key :password) s/Str
    (s/optional-key :address) NewAddress})
