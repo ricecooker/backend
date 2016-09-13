@@ -1,8 +1,8 @@
 (ns e85th.backend.core.auth
-  (:require [e85th.backend.core.models :as m]
-            [e85th.backend.core.db :as db]
+  (:require [schema.core :as s]
             [e85th.commons.ex :as ex]
-            [schema.core :as s]))
+            [e85th.backend.core.models :as m]
+            [e85th.backend.core.db :as db]))
 
 (s/defn find-role-by-id :- (s/maybe m/Role)
   [{:keys [db]} role-id :- s/Int]

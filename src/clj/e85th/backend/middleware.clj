@@ -77,6 +77,9 @@
       (catch e85th.commons.exceptions.ValidationExceptionInfo ex
         (log/infof "%s %s 422" request-method uri)
         (http-response/unprocessable-entity {:errors (-> ex ex/type+msgs second)}))
+      (catch e85th.commons.exceptions.AuthExceptionInfo ex
+        (log/infof "%s %s 401" request-method uri)
+        (http-response/unauthorized {:errors (-> ex ex/type+msgs second)}))
       (catch clojure.lang.ExceptionInfo ex
         (let [{:keys [type error] :as data} (ex-data ex) ;; compojure api exceptions
               [ex-type ex-msgs] (ex/type+msgs ex)

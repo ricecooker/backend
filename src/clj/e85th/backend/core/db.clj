@@ -22,6 +22,10 @@
   [db channel :- m/NewChannel user-id :- s/Int]
   (:id (sql/insert! db :channel channel user-id)))
 
+(s/defn update-channel :- s/Int
+  [db channel-id :- s/Int channel :- m/UpdateChannel user-id :- s/Int]
+  (sql/update! db :channel channel ["id = ?" channel-id] user-id))
+
 (s/defn insert-channels
   [db channels :- [m/NewChannel] user-id :- s/Int]
   (sql/insert-multi-with-audits! db :channel channels user-id))
@@ -67,6 +71,15 @@
             (format "Expected at most 1 row for channel-type %s, identifier %s" channel-type-id identifier))
     (first rs)))
 
+(s/defn select-channel-for-user-auth :- (s/maybe m/Channel)
+  [db identifier :- s/Str token :- s/Str]
+  (let [chans (->> {:identifier-nil? false :identifier identifier
+                    :token-nil? false :token token
+                    :token-expiration-nil? false :token-expiration (t/now)}
+                   (merge default-channel-params)
+                   (select-channels db))]
+    (assert (<=  (count chans) 1) "Expected at most 1 chan to match.")
+    (first chans)))
 
 (s/defn insert-address :- s/Int
   [db address :- m/NewAddress creator-id :- s/Int]

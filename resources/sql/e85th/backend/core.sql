@@ -22,7 +22,7 @@
       and (:channel-type-id-nil? or c.channel_type_id = :channel-type-id)
       and (:identifier-nil? or c.identifier = :identifier)
       and (:token-nil? or c.token = :token)
-      and (:token-expiration-nil? or c.token_expiration < :token-expiration)
+      and (:token-expiration-nil? or c.token_expiration > :token-expiration)
       and (:verified-at-nil? or c.verified_at > :verified-at)
 
 -- :name select-user-auth
