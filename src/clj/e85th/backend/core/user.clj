@@ -190,3 +190,16 @@
     {:user user
      :roles (find-user-roles res (:id user))
      :token (user->token res user)}))
+
+
+(s/defn find-address-by-id :- (s/maybe m/Address)
+  "Find an addres by id."
+  [{:keys [db]} address-id :- s/Int]
+  (db/select-address-by-id db address-id))
+
+(def find-address-by-id! (ex/wrap-not-found find-address-by-id))
+
+(s/defn find-addresses-by-user-id :- [m/Address]
+  "Find all addresses by the user-id."
+  [{:keys [db]} user-id :- s/Int]
+  (db/select-address-by-user-id db user-id))

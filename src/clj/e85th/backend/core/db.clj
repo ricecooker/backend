@@ -138,3 +138,22 @@
 (s/defn select-permission-by-name :- (s/maybe m/Permission)
   [db permission-name :- s/Str]
   (first (select-permission* db {:name-nil? false :name permission-name})))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Address
+(def ^:private default-address-params
+  {:id-nil? true :id nil
+   :user-id-nil? true :user-id nil})
+
+(defn- select-address*
+  [db params]
+  (select-address db (merge default-address-params params)))
+
+(s/defn select-address-by-id :- (s/maybe m/Address)
+  [db id :- s/Int]
+  (first (select-address* db {:id-nil? false :id id})))
+
+(s/defn select-address-by-user-id :- [m/Address]
+  [db user-id :- s/Int]
+  (select-address* db {:user-id-nil? false :user-id user-id}))

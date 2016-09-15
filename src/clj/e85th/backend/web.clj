@@ -16,6 +16,13 @@
       http-response/ok
       (http-response/content-type "text/plain")))
 
+(defn html-response
+  "Returns a ring response with content-type set to text/html."
+  [body]
+  (-> body
+      http-response/ok
+      (http-response/content-type "text/html")))
+
 (s/defn user-agent :- s/Str
   "Answers with the user-agent otherwise returns unk or optionally specify not-found."
   ([request]
@@ -34,8 +41,12 @@
   [request cookie-name]
   (get-in request [:cookies cookie-name :value]))
 
-
-
+(s/defn set-cookie
+  "Handles dissocing domain and secure when domain is localhost."
+  [response cookie-name cookie-value {:keys [domain] :as opts}]
+  (let [opts (cond-> opts
+               (= domain "localhost") (dissoc opts :domain :secure))]
+    (apply http-response/set-cookie [response cookie-name cookie-value opts])))
 
 ;; See https://github.com/metosin/compojure-api/wiki/Creating-your-own-metadata-handlers
 (defmethod meta/restructure-param :exists restructure-exists
@@ -80,7 +91,7 @@
         auth-fn? (some? auth-fn)
         auth-params {:auth-type :standard
                      :user user
-                     :permission (when perm? permission-or-auth-fn)
+                     :required-permission (when perm? permission-or-auth-fn)
                      :auth-fn (if perm? auth-fn permission-or-auth-fn)
                      :request '+compojure-api-request+}]
     (when auth-fn?

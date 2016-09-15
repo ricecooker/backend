@@ -61,3 +61,19 @@ union all
      from permission p
     where (:id-nil? or p.id = :id)
       and (:name-nil? or p.name = :name)
+
+-- :name select-address
+   select
+          a.id
+        , a.street_1    as "street-1"
+        , a.street_2    as "street-2"
+        , a.city
+        , a.state
+        , a.postal_code as "postal-code"
+        , a.lat
+        , a.lng
+     from address a
+left join user_address ua
+       on a.id = ua.address_id
+    where (:id-nil? or a.id = :id)
+      and (:user-id-nil? or ua.user_id = :user-id)

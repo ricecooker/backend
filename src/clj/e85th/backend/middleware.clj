@@ -75,8 +75,9 @@
         (log/infof "%s %s %s" request-method uri status)
         resp)
       (catch e85th.commons.exceptions.ValidationExceptionInfo ex
-        (log/infof "%s %s 422" request-method uri)
-        (http-response/unprocessable-entity {:errors (-> ex ex/type+msgs second)}))
+        (let [errors (-> ex ex/type+msgs second)]
+          (log/infof "%s %s 422 %s" request-method uri errors)
+          (http-response/unprocessable-entity {:errors errors})))
       (catch e85th.commons.exceptions.AuthExceptionInfo ex
         (log/infof "%s %s 401" request-method uri)
         (http-response/unauthorized {:errors (-> ex ex/type+msgs second)}))
