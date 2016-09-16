@@ -14,6 +14,9 @@
    :first-name s/Str
    :last-name s/Str})
 
+(s/defschema UserInfo
+  (assoc User :roles #{s/Keyword}))
+
 (s/defschema UserAllFields
   ^{:doc "All fields including password digest"}
   (merge User {:password-digest (s/maybe s/Str)}))

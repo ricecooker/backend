@@ -10,7 +10,8 @@
             [clojure.java.jdbc :as jdbc]
             [clojure.set :as set]
             [schema.core :as s]
-            [e85th.commons.token :as token]))
+            [e85th.commons.token :as token]
+            [e85th.backend.core.models :as cm]))
 
 (def duplicate-channel-ex ::duplicate-channel-ex)
 (def password-required-ex ::password-required-ex)
@@ -203,3 +204,9 @@
   "Find all addresses by the user-id."
   [{:keys [db]} user-id :- s/Int]
   (db/select-address-by-user-id db user-id))
+
+
+(s/defn find-user-info! :- cm/UserInfo
+  [res user-id :- s/Int]
+  (-> (find-user-by-id! res user-id)
+      (assoc :roles (find-user-roles res user-id))))
