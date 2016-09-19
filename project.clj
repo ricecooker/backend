@@ -4,7 +4,7 @@
   :license {:name "Apache License 2.0"
             :url "http://www.apache.org/licenses/LICENSE-2.0"}
   :dependencies [[org.clojure/clojure "1.8.0"]
-                 [e85th/commons "0.1.0-SNAPSHOT"]
+                 [e85th/commons "0.1.0"]
                  [com.layerware/hugsql "0.4.6"]
                  [metosin/compojure-api "1.1.4"]
                  [metosin/ring-http-response "0.8.0"]
