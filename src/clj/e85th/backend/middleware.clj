@@ -67,12 +67,13 @@
         (update-in response [:headers] dissoc "Content-Length")
         response))))
 
-(defn wrap-log-request-outcome
+(defn wrap-log-api-request-outcome
   [f]
   (fn [{:keys [uri request-method] :as req}]
     (try
       (let [{:keys [status] :as resp} (f req)]
-        (log/infof "%s %s %s" request-method uri status)
+        ;; resp will be nil for 404s (no such route)
+        (log/infof "%s %s %s" request-method uri (or status 404))
         resp)
       (catch e85th.commons.exceptions.ValidationExceptionInfo ex
         (let [errors (-> ex ex/type+msgs second)]
