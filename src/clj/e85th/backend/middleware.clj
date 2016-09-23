@@ -67,7 +67,8 @@
         (update-in response [:headers] dissoc "Content-Length")
         response))))
 
-(defn wrap-log-api-request-outcome
+(defn wrap-api-exception-handling
+  "API exception handling also logs request disposition."
   [f]
   (fn [{:keys [uri request-method] :as req}]
     (try
@@ -103,3 +104,43 @@
           (u/log-throwable ex uuid)
           (log/errorf "req %s, message: %s" (web/raw-request req) (.getMessage ex))
           (http-response/internal-server-error {:errors [(str "Unexpected server error. " uuid)]}))))))
+
+(defn wrap-site-exception-handling
+  "Exception handling for websites, also logs request disposition.
+   login-page is where the redirect happens if AuthExceptionInfo is raised.
+   error-page-fn is a function that takes a request and the exception."
+  [f login-page error-page-fn]
+  (fn [{:keys [uri request-method] :as req}]
+    (try
+      (let [{:keys [status] :as resp} (f req)]
+        ;; resp will be nil for 404s (no such route)
+        (log/infof "%s %s %s" request-method uri (or status 404))
+        resp)
+      (catch e85th.commons.exceptions.AuthExceptionInfo ex
+        (log/infof "%s %s 401" request-method uri)
+        (http-response/see-other login-page))
+      (catch Exception ex
+        (let [uuid (u/uuid)]
+          (u/log-throwable ex uuid)
+          (log/errorf "req %s, message: %s" (web/raw-request req) (.getMessage ex))
+                                        ;(http-response/internal-server-error {:errors [(str "Unexpected server error. " uuid)]})
+          (http-response/internal-server-error (error-page-fn req ex)))))))
+
+
+;; -- For UI purposes
+(def components-key :compojure.api.middleware/components)
+
+(defn wrap-cookie-value-in-components
+  "Adds a res-key to resources that are available in all routes.  Then res-key can be used to access the cookie value.
+   Useful for hanlding cookies that are tokens which need to be used to make api calls etc.
+   Usage (wrap-cookie-value-in-components handler :res :auth-token :bearer).  In this case,
+   the :auth-token cookie's value will be added to the component's under the :bearer."
+  [f resources-name cookie-name res-key]
+  (let [cookie-name (cond
+                      (keyword? cookie-name) (name cookie-name)
+                      (string? cookie-name) cookie-name
+                      :else (throw (ex-info "Unknown cookie-name type." {:cookie-name cookie-name})))]
+    (fn [request]
+      (let [v (web/cookie-value request cookie-name)
+            request' (update-in request [components-key resources-name] assoc res-key v)]
+        (f request')))))
