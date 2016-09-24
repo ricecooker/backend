@@ -18,6 +18,9 @@
   :source-paths ["src/clj"]
   :java-source-paths ["src/java"]
 
+  ;; only to quell lein-cljsbuild when using checkouts
+  :cljsbuild {:builds []}
+
   :profiles {:dev  [:project/dev  :profiles/dev]
              :test [:project/test :profiles/test]
              :profiles/dev  {}
