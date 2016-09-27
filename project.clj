@@ -4,6 +4,7 @@
   :license {:name "Apache License 2.0"
             :url "http://www.apache.org/licenses/LICENSE-2.0"}
   :dependencies [[org.clojure/clojure "1.8.0"]
+                 [org.clojure/core.match "0.3.0-alpha4"]
                  [e85th/commons "0.1.1"]
                  [com.layerware/hugsql "0.4.6"]
                  [metosin/compojure-api "1.1.4"]
@@ -12,6 +13,7 @@
                  [org.immutant/web "2.1.5" :exclusions [ring/ring-core]]
                  [http-kit "2.2.0"]
                  [buddy "1.0.0"]
+                 [com.google.firebase/firebase-server-sdk "3.0.1"]
                  [org.clojure/tools.nrepl "0.2.12"]]
 
 

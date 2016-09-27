@@ -184,13 +184,21 @@
       (update-channel res id channel-update user-id)
       (find-user-by-id! res user-id))))
 
+(s/defn user->auth-response :- m/AuthResponse
+  [res user :- m/User]
+  {:user user
+   :roles (find-user-roles res (:id user))
+   :token (user->token res user)})
+
+(s/defn user-id->auth-response :- m/AuthResponse
+  [res user-id :- s/Int]
+  (user->auth-response res (find-user-by-id! res user-id)))
+
 (s/defn authenticate-via-token :- m/AuthResponse
   "Authenticate a user, if identifier and token combination are not valid, then throws AuthExceptionInfo."
   [res identifier :- s/Str token :- s/Str]
   (let [user (auth-with-token res identifier token)]
-    {:user user
-     :roles (find-user-roles res (:id user))
-     :token (user->token res user)}))
+    (user->auth-response res user)))
 
 
 (s/defn find-address-by-id :- (s/maybe m/Address)
