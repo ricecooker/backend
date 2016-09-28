@@ -38,6 +38,10 @@
   (-> (make-firebase-options service-account-file database-url)
       FirebaseApp/initializeApp))
 
+(s/defn inited?
+  []
+  (some? (seq (FirebaseApp/getApps))))
+
 (s/defn async-verify-id-token
   "Verifies the token. Calls on-success with the FirebaseToken or
    on-error with the FirebaseAuthException instance."
