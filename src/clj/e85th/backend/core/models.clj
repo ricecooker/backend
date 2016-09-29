@@ -9,6 +9,13 @@
 (def ^{:doc "email channel"}
   email-channel-type-id 2)
 
+(def ^{:doc "Answers if the input integer is an email channel type"}
+  email-channel-type-id? (partial = email-channel-type-id))
+
+(def ^{:doc "Answers if the associative data input is an email channel"}
+  email-channel? (comp email-channel-type-id? :channel-type-id))
+
+
 (s/defschema User
   {:id s/Int
    :first-name s/Str

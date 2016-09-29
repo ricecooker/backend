@@ -213,6 +213,10 @@
   [{:keys [db]} user-id :- s/Int]
   (db/select-address-by-user-id db user-id))
 
+(s/defn find-email-channels-by-user-id :- [m/Channel]
+  "Enumerates all email channels for the user."
+  [{:keys [db]} user-id :- s/Int]
+  (filter m/email-channel? (db/select-channels-by-user-id db user-id)))
 
 (s/defn find-user-info! :- cm/UserInfo
   [res user-id :- s/Int]
