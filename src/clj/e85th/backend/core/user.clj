@@ -144,6 +144,8 @@
   [res user-id :- s/Int]
   (:roles (find-user-auth res user-id)))
 
+(def find-roles-by-user-id find-user-roles)
+
 (s/defn send-mobile-token :- s/Bool
   "Send a mobile token to the user with mobile-nbr. Store in db to verify.
    Throws an exception if the mobile channel doesn't exist for the identifier."
