@@ -30,6 +30,10 @@
   [db channels :- [m/NewChannel] user-id :- s/Int]
   (sql/insert-multi-with-audits! db :channel channels user-id))
 
+(s/defn delete-user
+  [db user-id :- s/Int]
+  (sql/delete! db user-tbl ["id = ?" user-id]))
+
 (def ^:private default-channel-params
   {:id-nil? true
    :id nil
@@ -101,6 +105,13 @@
   (let [xs (map #(hash-map :role-id % :user-id user-id) roles)]
     (sql/insert-multi-with-create-audits! db :user-role xs creator-id)))
 
+(s/defn delete-user-roles
+  [db user-id :- s/Int roles :- #{s/Int}]
+  (let [xs (map #(hash-map :role-id % :user-id user-id) roles)]
+    (jdbc/with-db-transaction [txn db]
+      (doseq [role-id roles]
+        (sql/delete! txn :user-role ["user_id = ? and role_id = ?" user-id role-id])))))
+
 (def ^:private default-role-params
   {:id-nil? true :id nil
    :name-nil? true :name nil})
@@ -119,6 +130,10 @@
 (s/defn select-role-by-name :- (s/maybe m/Role)
   [db role-name :- s/Str]
   (first (select-role* db {:name-nil? false :name role-name})))
+
+(s/defn select-all-roles :- [m/Role]
+  [db]
+  (select-role* db {}))
 
 (def ^:private default-permission-params
   {:id-nil? true :id nil

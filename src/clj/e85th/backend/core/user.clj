@@ -224,3 +224,16 @@
   [res user-id :- s/Int]
   (-> (find-user-by-id! res user-id)
       (assoc :roles (find-user-roles res user-id))))
+
+(s/defn add-user-roles
+  [{:keys [db]} user-id :- s/Int role-ids :- [s/Int] editor-user-id :- s/Int]
+  (db/insert-user-roles db user-id (set role-ids) editor-user-id))
+
+(s/defn rm-user-roles
+  [{:keys [db]} user-id :- s/Int role-ids :- [s/Int] editor-user-id :- s/Int]
+  (db/delete-user-roles db user-id (set role-ids)))
+
+
+(s/defn delete-user
+  [{:keys [db]} user-id :- s/Int delete-user-id :- s/Int]
+  (db/delete-user db user-id))

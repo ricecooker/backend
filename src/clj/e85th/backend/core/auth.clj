@@ -5,6 +5,10 @@
             [e85th.backend.core.db :as db]
             [clojure.string :as string]))
 
+(s/defn find-all-roles :- [m/Role]
+  [{:keys [db]}]
+  (db/select-all-roles db))
+
 (s/defn find-role-by-id :- (s/maybe m/Role)
   [{:keys [db]} role-id :- s/Int]
   (db/select-role-by-id db role-id))
