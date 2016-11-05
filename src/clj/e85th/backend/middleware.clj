@@ -53,7 +53,7 @@
     (let [{:keys [params]} request
           api-key (get-in request [:params "api_key"])
           request (cond-> request
-                    api-key (assoc-in [:headers "authorization"] (str "Authorization " api-key)))]
+                    api-key (assoc-in [:headers "authorization"] (str "Bearer " api-key)))]
       (f request))))
 
 (defn wrap-swagger-remove-content-length
@@ -68,42 +68,48 @@
         response))))
 
 (defn wrap-api-exception-handling
-  "API exception handling also logs request disposition."
-  [f]
-  (fn [{:keys [uri request-method] :as req}]
-    (try
-      (let [{:keys [status] :as resp} (f req)]
-        ;; resp will be nil for 404s (no such route)
-        (log/infof "%s %s %s" request-method uri (or status 404))
-        resp)
-      (catch e85th.commons.exceptions.ValidationExceptionInfo ex
-        (let [errors (-> ex ex/type+msgs second)]
-          (log/infof "%s %s 422 %s" request-method uri errors)
-          (http-response/unprocessable-entity {:errors errors})))
-      (catch e85th.commons.exceptions.AuthExceptionInfo ex
-        (log/infof "%s %s 401" request-method uri)
-        (http-response/unauthorized {:errors (-> ex ex/type+msgs second)}))
-      (catch clojure.lang.ExceptionInfo ex
-        (let [{:keys [type error] :as data} (ex-data ex) ;; compojure api exceptions
-              [ex-type ex-msgs] (ex/type+msgs ex)
-              ;; normalize to have just one type, errors
-              ex-type (or type ex-type)
-              errors {:errors (or error ex-msgs)}]
-          (condp = ex-type
-            :compojure.api.exception/request-validation (do
-                                                          (log/infof "%s %s 400" request-method uri)
-                                                          (log/warnf "req %s, message: %s" (web/raw-request req) (.getMessage ex))
-                                                          (compojure.api.exception/request-validation-handler ex data req))
-            ex/not-found (do
-                           (log/infof "%s %s 404" request-method uri)
-                           (http-response/not-found errors))
-            ;; nothing matched, rethrow
-            (throw ex))))
-      (catch Exception ex
-        (let [uuid (u/uuid)]
-          (u/log-throwable ex uuid)
-          (log/errorf "req %s, message: %s" (web/raw-request req) (.getMessage ex))
-          (http-response/internal-server-error {:errors [(str "Unexpected server error. " uuid)]}))))))
+  "API exception handling also logs request disposition. on-ex-fn is a fn that takes the request and the exception.
+  on-ex-fn is called during what would result in a 500 server error."
+  ([f]
+   (wrap-api-exception-handling f (fn [_ _])))
+  ([f on-ex-fn]
+   (fn [{:keys [uri request-method] :as req}]
+     (try
+       (let [{:keys [status] :as resp} (f req)]
+         ;; resp will be nil for 404s (no such route)
+         (log/infof "%s %s %s" request-method uri (or status 404))
+         resp)
+       (catch e85th.commons.exceptions.ValidationExceptionInfo ex
+         (let [errors (-> ex ex/type+msgs second)]
+           (log/infof "%s %s 422 %s" request-method uri errors)
+           (http-response/unprocessable-entity {:errors errors})))
+       (catch e85th.commons.exceptions.AuthExceptionInfo ex
+         (log/infof "%s %s 401" request-method uri)
+         (http-response/unauthorized {:errors (-> ex ex/type+msgs second)}))
+       (catch clojure.lang.ExceptionInfo ex
+         (let [{:keys [type error] :as data} (ex-data ex) ;; compojure api exceptions
+               [ex-type ex-msgs] (ex/type+msgs ex)
+               ;; normalize to have just one type, errors
+               ex-type (or type ex-type)
+               errors {:errors (or error ex-msgs)}]
+           (condp = ex-type
+             :compojure.api.exception/request-validation (do
+                                                           (log/infof "%s %s 400" request-method uri)
+                                                           (log/warnf "req %s, message: %s" (web/raw-request req) (.getMessage ex))
+                                                           (compojure.api.exception/request-validation-handler ex data req))
+             ex/not-found (do
+                            (log/infof "%s %s 404" request-method uri)
+                            (http-response/not-found errors))
+             ;; nothing matched, rethrow
+             (do
+               (on-ex-fn req ex)
+               (throw ex)))))
+       (catch Exception ex
+         (let [uuid (u/uuid)]
+           (u/log-throwable ex uuid)
+           (log/errorf "req %s, message: %s" (web/raw-request req) (.getMessage ex))
+           (on-ex-fn req ex)
+           (http-response/internal-server-error {:errors [(str "Unexpected server error. " uuid)]})))))))
 
 (defn wrap-site-exception-handling
   "Exception handling for websites, also logs request disposition.
