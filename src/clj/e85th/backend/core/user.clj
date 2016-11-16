@@ -5,13 +5,16 @@
             [e85th.commons.tel :as tel]
             [e85th.commons.ex :as ex]
             [e85th.commons.util :as u]
+            [taoensso.timbre :as log]
             [buddy.hashers :as hashers]
+            [e85th.backend.core.firebase :as firebase]
             [clj-time.core :as t]
             [clojure.java.jdbc :as jdbc]
             [clojure.set :as set]
             [schema.core :as s]
             [e85th.commons.token :as token]
-            [e85th.backend.core.models :as cm]))
+            [e85th.backend.core.models :as cm]
+            [e85th.commons.email :as email]))
 
 (def duplicate-channel-ex ::duplicate-channel-ex)
 (def password-required-ex ::password-required-ex)
@@ -42,6 +45,11 @@
   "Enumerates all channels by the user-id."
   [{:keys [db]} user-id :- s/Int]
   (db/select-channels-by-user-id db user-id))
+
+(s/defn find-channels-by-identifier :- [m/Channel]
+  "Enumerate all channels matching the identifier."
+  [{:keys [db]} identifier :- s/Str]
+  (db/select-channels-by-identifier db identifier))
 
 (s/defn find-channel-by-type :- (s/maybe m/Channel)
   [{:keys [db]} channel-type-id :- s/Int identifier :- s/Str]
@@ -174,9 +182,9 @@
   (assert token-factory)
   (token/token->data! token-factory token))
 
-(s/defn ^:private auth-with-token :- m/User
-  "Check the mobile-nbr and token combination is not yet expired. Answers with the user-id.
-   Throws exceptions if token decrypt fails or user does not exist."
+(s/defn ^:private auth-with-token :- s/Int
+  "Check the identifier and token combination is not yet expired. Answers with the user-id.
+   Throws exceptions if unexpired identifier and token combo is not found."
   [{:keys [db] :as res} identifier :- s/Str token :- s/Str]
   (let [{:keys [id user-id verified-at] :as chan} (db/select-channel-for-user-auth db identifier token)]
     (when-not chan
@@ -184,7 +192,7 @@
     (let [channel-update (cond-> {:token nil :token-expiration nil}
                            (not verified-at) (assoc :verified-at (t/now)))]
       (update-channel res id channel-update user-id)
-      (find-user-by-id! res user-id))))
+      user-id)))
 
 (s/defn user->auth-response :- m/AuthResponse
   [res user :- m/User]
@@ -195,13 +203,6 @@
 (s/defn user-id->auth-response :- m/AuthResponse
   [res user-id :- s/Int]
   (user->auth-response res (find-user-by-id! res user-id)))
-
-(s/defn authenticate-via-token :- m/AuthResponse
-  "Authenticate a user, if identifier and token combination are not valid, then throws AuthExceptionInfo."
-  [res identifier :- s/Str token :- s/Str]
-  (let [user (auth-with-token res identifier token)]
-    (user->auth-response res user)))
-
 
 (s/defn find-address-by-id :- (s/maybe m/Address)
   "Find an addres by id."
@@ -233,7 +234,51 @@
   [{:keys [db]} user-id :- s/Int role-ids :- [s/Int] editor-user-id :- s/Int]
   (db/delete-user-roles db user-id (set role-ids)))
 
-
 (s/defn delete-user
   [{:keys [db]} user-id :- s/Int delete-user-id :- s/Int]
   (db/delete-user db user-id))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Authenticate
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defmulti authenticate
+  (fn [res user-auth]
+    (first (keys user-auth))))
+
+(defmethod authenticate :with-firebase
+  [res {:keys [with-firebase]}]
+  (let [jwt (:token with-firebase)
+        auth-ex-fn (fn [ex]
+                     (throw
+                      (ex/new-auth-exception :firebase/auth-failed "Firebase Auth Failed" {} ex)))
+        {:keys [email]} (firebase/verify-id-token! jwt auth-ex-fn)]
+
+    (assert email "We don't handle anonymous logins a la firebase.")
+
+    (if-let [{:keys [user-id]} (find-email-channel res email)]
+      (user-id->auth-response res user-id)
+      (throw (ex/new-auth-exception :user/no-such-user "No such user.")))))
+
+(defmethod authenticate :with-token
+  [res {:keys [with-token]}]
+  (let [{:keys [identifier token]} with-token
+        identifier (cond-> identifier
+                     (email/valid? identifier) identity
+                     (tel/valid? identifier) tel/normalize)
+        user-id (auth-with-token res identifier token)]
+    (user-id->auth-response res user-id)))
+
+(defmethod authenticate :with-password
+  [res {:keys [with-password]}]
+  (let [{:keys [email password]} with-password
+        {:keys [id password-digest]} (some->> (find-email-channel res email)
+                                              :user-id
+                                              (find-user-all-fields-by-id res))]
+
+    (when-not (seq password-digest)
+      (throw (ex/new-auth-exception :user/invalid-password "Invalid password.")))
+
+    (when-not (hashers/check password password-digest)
+      (throw (ex/new-auth-exception :user/invalid-password "Invalid password.")))
+
+    (user-id->auth-response res id)))

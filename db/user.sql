@@ -18,7 +18,7 @@ create table "user" (
     id serial primary key
   , first_name varchar(50) not null
   , last_name varchar(50) not null
-  , password_digest char(100) null -- nullable ie if you use social login
+  , password_digest varchar(100) null -- nullable ie if you use social login
   , created_at timestamp not null default now()
   , created_by integer not null
   , updated_at timestamp not null default now()

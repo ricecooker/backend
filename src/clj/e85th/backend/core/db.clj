@@ -75,6 +75,12 @@
             (format "Expected at most 1 row for channel-type %s, identifier %s" channel-type-id identifier))
     (first rs)))
 
+(s/defn select-channels-by-identifier :- [m/Channel]
+  [db identifier :- s/Str]
+  (->> {:identifier-nil? false :identifier identifier}
+       (merge default-channel-params)
+       (select-channels db)))
+
 (s/defn select-channel-for-user-auth :- (s/maybe m/Channel)
   [db identifier :- s/Str token :- s/Str]
   (let [chans (->> {:identifier-nil? false :identifier identifier

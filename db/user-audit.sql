@@ -9,7 +9,7 @@ create table audit.user (
   , id integer
   , first_name varchar(50)
   , last_name varchar(50)
-  , password_digest char(100)
+  , password_digest varchar(100)
   , created_at timestamp
   , created_by integer
   , updated_at timestamp

@@ -33,6 +33,7 @@
   {:id s/Int
    :user-id s/Int
    :channel-type-id s/Int
+   :channel-type-name s/Str
    :identifier s/Str
    :token (s/maybe s/Str)
    :token-expiration (s/maybe DateTime)
@@ -43,7 +44,7 @@
 
 (s/defschema UpdateChannel
   (-> Channel
-      (dissoc :id)
+      (dissoc :id :channel-type-name)
       u/make-all-keys-optional))
 
 (s/defschema OneTimePassRequest
@@ -106,3 +107,20 @@
   {:user User
    :roles #{s/Keyword}
    :token s/Str})
+
+
+(s/defschema WithPasswordAuth
+  {:email s/Str
+   :password s/Str})
+
+(s/defschema WithFirebaseAuth
+  {:token s/Str})
+
+(s/defschema WithTokenAuth
+  {:identifier s/Str
+   :token s/Str})
+
+(s/defschema UserAuthRequest
+  {(s/optional-key :with-firebase) WithFirebaseAuth
+   (s/optional-key :with-token) WithTokenAuth
+   (s/optional-key :with-password) WithPasswordAuth})
