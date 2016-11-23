@@ -95,6 +95,10 @@
   [db address :- m/NewAddress creator-id :- s/Int]
   (:id (sql/insert! db :address address creator-id)))
 
+(s/defn update-address
+  [db address-id :- s/Int data :- m/UpdateAddress user-id :- s/Int]
+  (sql/update! db :address data ["id = ?" address-id] user-id))
+
 (s/defn insert-user-address :- s/Int
   [db user-id :- s/Int address-id :- s/Int creator-id :- s/Int]
   (:id (sql/insert-with-create-audits! db :user-address {:user-id user-id
@@ -164,17 +168,20 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Address
 (def ^:private default-address-params
-  {:id-nil? true :id nil
-   :user-id-nil? true :user-id nil})
+  {:ids-nil? true :ids nil})
 
 (defn- select-address*
   [db params]
   (select-address db (merge default-address-params params)))
 
-(s/defn select-address-by-id :- (s/maybe m/Address)
-  [db id :- s/Int]
-  (first (select-address* db {:id-nil? false :id id})))
+(s/defn select-addresses-by-ids :- [m/Address]
+  [db ids :- [s/Int]]
+  (if (seq ids)
+    (select-address* db {:ids-nil? false :ids ids})
+    []))
 
-(s/defn select-address-by-user-id :- [m/Address]
+(s/defn select-address-ids-by-user-id :- [s/Int]
   [db user-id :- s/Int]
-  (select-address* db {:user-id-nil? false :user-id user-id}))
+  (->> {:user-id user-id}
+       (select-user-address db)
+       (map :address-id)))

@@ -1,6 +1,7 @@
 (ns e85th.backend.core.user
   (:require [e85th.backend.core.db :as db]
             [e85th.backend.core.models :as m]
+            [e85th.backend.core.address :as address]
             [e85th.commons.sms :as sms]
             [e85th.commons.tel :as tel]
             [e85th.commons.ex :as ex]
@@ -118,10 +119,17 @@
       (select-keys [:channel-type-id :identifier])
       (assoc :user-id user-id)))
 
+
+(s/defn find-addresses-by-user-id :- [m/Address]
+  "Find all addresses by the user-id."
+  [{:keys [db] :as res} user-id :- s/Int]
+  (->> (db/select-address-ids-by-user-id db user-id)
+       (address/find-addresses-by-ids res)))
+
 (s/defn ^:private create-user-address
-  [txn user-id :- s/Int address :- m/NewAddress creator-id :- s/Int]
-  (let [address-id (db/insert-address txn address creator-id)]
-    (db/insert-user-address txn user-id address-id creator-id)))
+  [{:keys [db] :as res} user-id :- s/Int address :- m/NewAddress creator-id :- s/Int]
+  (let [address-id (:id (address/create-address res address creator-id))]
+    (db/insert-user-address db user-id address-id creator-id)))
 
 (s/defn create-new-user :- m/User
   "Creates a new user from a channel."
@@ -134,7 +142,7 @@
       (db/insert-channels txn (map #(assoc % :user-id @user-id) channels) creator-id)
       (db/insert-user-roles txn @user-id roles creator-id)
       (when-let [address (:address new-user)]
-        (create-user-address txn @user-id address creator-id)))
+        (create-user-address (assoc res :db txn) @user-id address creator-id)))
 
     (find-user-by-id res @user-id)))
 
@@ -204,24 +212,12 @@
   [res user-id :- s/Int]
   (user->auth-response res (find-user-by-id! res user-id)))
 
-(s/defn find-address-by-id :- (s/maybe m/Address)
-  "Find an addres by id."
-  [{:keys [db]} address-id :- s/Int]
-  (db/select-address-by-id db address-id))
-
-(def find-address-by-id! (ex/wrap-not-found find-address-by-id))
-
-(s/defn find-addresses-by-user-id :- [m/Address]
-  "Find all addresses by the user-id."
-  [{:keys [db]} user-id :- s/Int]
-  (db/select-address-by-user-id db user-id))
-
 (s/defn find-email-channels-by-user-id :- [m/Channel]
   "Enumerates all email channels for the user."
   [{:keys [db]} user-id :- s/Int]
   (filter m/email-channel? (db/select-channels-by-user-id db user-id)))
 
-(s/defn find-user-info! :- cm/UserInfo
+(s/defn find-user-info! :- m/UserInfo
   [res user-id :- s/Int]
   (-> (find-user-by-id! res user-id)
       (assoc :roles (find-user-roles res user-id))))

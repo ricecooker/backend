@@ -66,6 +66,9 @@
 (s/defschema NewAddress
   (dissoc Address :id))
 
+(s/defschema UpdateAddress
+  (u/make-all-keys-optional NewAddress))
+
 (s/defschema CreateUser
   {:first-name s/Str
    :last-name s/Str

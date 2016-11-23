@@ -76,7 +76,12 @@ union all
         , a.lat
         , a.lng
      from address a
-left join user_address ua
-       on a.id = ua.address_id
-    where (:id-nil? or a.id = :id)
-      and (:user-id-nil? or ua.user_id = :user-id)
+    where (:ids-nil? or a.id in (:v*:ids))
+
+-- :name select-user-address
+   select
+          ua.id
+        , ua.user_id     as "user-id"
+        , ua.address_id  as "address-id"
+     from user_address ua
+    where ua.user_id = :user-id
