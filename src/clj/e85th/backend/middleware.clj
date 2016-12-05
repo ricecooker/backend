@@ -87,6 +87,7 @@
          (log/infof "%s %s 401" request-method uri)
          (http-response/unauthorized {:errors (-> ex ex/type+msgs second)}))
        (catch clojure.lang.ExceptionInfo ex
+         (log/debug ex)
          (let [{:keys [type error] :as data} (ex-data ex) ;; compojure api exceptions
                [ex-type ex-msgs] (ex/type+msgs ex)
                ;; normalize to have just one type, errors
