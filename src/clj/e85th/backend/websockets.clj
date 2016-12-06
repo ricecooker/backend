@@ -70,8 +70,8 @@
 
 (defrecord NilWebSocket []
   component/Lifecycle
-  (start [this])
-  (stop [this])
+  (start [this] this)
+  (stop [this] this)
 
   IWebSocket
   (notify! [this user-ids msg])
