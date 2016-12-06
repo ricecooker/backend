@@ -1,4 +1,4 @@
-(defproject e85th/backend "0.1.11"
+(defproject e85th/backend "0.1.12"
   :description "Backend server code."
   :url "https://github.com/e85th/backend"
   :license {:name "Apache License 2.0"
@@ -6,6 +6,7 @@
   :dependencies [[org.clojure/clojure "1.8.0"]
                  [org.clojure/core.match "0.3.0-alpha4"]
                  [e85th/commons "0.1.4"]
+                 [com.taoensso/sente "1.11.0"] ; websockets
                  [com.layerware/hugsql "0.4.6"]
                  [metosin/compojure-api "1.1.4"]
                  [metosin/ring-http-response "0.8.0"]
