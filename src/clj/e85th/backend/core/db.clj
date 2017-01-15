@@ -185,3 +185,19 @@
   (->> {:user-id user-id}
        (select-user-address db)
        (map :address-id)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; User Role
+(s/defn select-user-role*
+  [db user-ids :- [s/Int] role-ids :- [s/Int]]
+  (let [params (cond-> {:role-ids-nil? true :role-ids role-ids
+                        :user-ids-nil? true :user-ids user-ids}
+                 (some? (seq role-ids)) (assoc :role-ids-nil? false)
+                 (some? (seq user-ids)) (assoc :user-ids-nil? false))]
+    (select-user-role db params)))
+
+(s/defn select-users-by-roles :- [s/Int]
+  [db role-ids :- [s/Int]]
+  (assert (seq role-ids) "Must specify at least one role id.")
+  (map :user-id
+       (select-user-role* db [] role-ids)))

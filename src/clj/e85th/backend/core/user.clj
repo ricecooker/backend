@@ -162,6 +162,11 @@
 
 (def find-roles-by-user-id find-user-roles)
 
+(s/defn find-user-ids-by-role-ids :- [s/Int]
+  [{:keys [db]} role-ids :- [s/Int]]
+  (db/select-users-by-roles db role-ids))
+
+
 (s/defn send-mobile-token :- s/Bool
   "Send a mobile token to the user with mobile-nbr. Store in db to verify.
    Throws an exception if the mobile channel doesn't exist for the identifier."

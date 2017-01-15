@@ -85,3 +85,13 @@ union all
         , ua.address_id  as "address-id"
      from user_address ua
     where ua.user_id = :user-id
+
+-- :name select-user-role
+   select
+           ur.id
+         , ur.user_id as "user-id"
+         , ur.role_id as "role-id"
+     from user_role ur
+    where 1 = 1
+--~ (when (seq (:role-ids params)) "and ur.role_id in (:v*:role-ids)")
+--~ (when (seq (:user-ids params)) "and ur.user_id in (:v*:user-ids)")
