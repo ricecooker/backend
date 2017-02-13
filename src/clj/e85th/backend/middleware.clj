@@ -126,6 +126,25 @@
       (catch e85th.commons.exceptions.AuthExceptionInfo ex
         (log/infof "%s %s 401" request-method uri)
         (http-response/see-other login-page))
+      (catch clojure.lang.ExceptionInfo ex
+        (log/debug ex)
+        (let [{:keys [type error] :as data} (ex-data ex) ;; compojure api exceptions
+              [ex-type ex-msgs] (ex/type+msgs ex)
+              ;; normalize to have just one type, errors
+              ex-type (or type ex-type)
+              errors {:errors (or error ex-msgs)}]
+          (condp = ex-type
+            :compojure.api.exception/request-validation (do
+                                                          (log/infof "%s %s 400" request-method uri)
+                                                          (log/warnf "req %s, message: %s" (web/raw-request req) (.getMessage ex))
+                                                          (compojure.api.exception/request-validation-handler ex data req))
+            ex/not-found (do
+                           (log/infof "%s %s 404" request-method uri)
+                           (http-response/not-found errors))
+            ;; nothing matched, rethrow
+            (do
+              (error-page-fn req ex)
+              (throw ex)))))
       (catch Exception ex
         (let [uuid (u/uuid)]
           (u/log-throwable ex uuid)
