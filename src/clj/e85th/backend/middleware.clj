@@ -77,7 +77,7 @@
      (try
        (let [{:keys [status] :as resp} (f req)]
          ;; resp will be nil for 404s (no such route)
-         (log/infof "%s %s %s" request-method uri (or status 404))
+         (log/infof "%s %s %s" request-method uri (or status ""))
          resp)
        (catch e85th.commons.exceptions.ValidationExceptionInfo ex
          (let [errors (-> ex ex/type+msgs second)]
@@ -121,7 +121,7 @@
     (try
       (let [{:keys [status] :as resp} (f req)]
         ;; resp will be nil for 404s (no such route)
-        (log/infof "%s %s %s" request-method uri (or status 404))
+        (log/infof "%s %s %s" request-method uri (or status ""))
         resp)
       (catch e85th.commons.exceptions.AuthExceptionInfo ex
         (log/infof "%s %s 401" request-method uri)

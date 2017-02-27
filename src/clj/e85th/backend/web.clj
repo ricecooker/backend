@@ -30,6 +30,16 @@
   ([request not-found]
    (get-in request [:headers "user-agent"] not-found)))
 
+(s/defn request-host :- s/Str
+  "Answers with the user-agent otherwise returns unk or optionally specify not-found."
+  [request]
+  (get-in request [:headers "host"]))
+
+(s/defn request-server-name :- s/Str
+  "Answers with the user-agent otherwise returns unk or optionally specify not-found."
+  [request]
+  (get-in request [:server-name]))
+
 (defn raw-request
   "Answers with a request that is free of extraneus keys."
   [request]
@@ -39,7 +49,7 @@
 (s/defn cookie-value :- (s/maybe s/Str)
   "Extracts the cookie's value otherwise returns nil"
   [request cookie-name]
-  (get-in request [:cookies cookie-name :value]))
+  (get-in request [:cookies (name cookie-name) :value]))
 
 (s/defn set-cookie
   "Handles dissocing domain and secure when domain is localhost."

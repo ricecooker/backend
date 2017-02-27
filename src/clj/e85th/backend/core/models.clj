@@ -123,7 +123,11 @@
   {:identifier s/Str
    :token s/Str})
 
+(s/defschema WithGoogleAuth
+  {:token s/Str})
+
 (s/defschema UserAuthRequest
   {(s/optional-key :with-firebase) WithFirebaseAuth
+   (s/optional-key :with-google) WithGoogleAuth
    (s/optional-key :with-token) WithTokenAuth
    (s/optional-key :with-password) WithPasswordAuth})

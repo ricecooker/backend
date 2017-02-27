@@ -14,6 +14,7 @@
                  [org.immutant/web "2.1.5" :exclusions [ring/ring-core]]
                  [http-kit "2.2.0"]
                  [buddy "1.0.0"]
+                 [com.google.api-client/google-api-client "1.22.0"]
                  [com.google.firebase/firebase-server-sdk "3.0.1"]
                  [org.clojure/tools.nrepl "0.2.12"]]
 

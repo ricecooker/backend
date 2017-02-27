@@ -9,6 +9,7 @@
             [taoensso.timbre :as log]
             [buddy.hashers :as hashers]
             [e85th.backend.core.firebase :as firebase]
+            [e85th.backend.core.google-oauth :as google-oauth]
             [clj-time.core :as t]
             [clojure.java.jdbc :as jdbc]
             [clojure.set :as set]
@@ -259,6 +260,23 @@
     (if-let [{:keys [user-id]} (find-email-channel res email)]
       (user-id->auth-response res user-id)
       (throw (ex/new-auth-exception :user/no-such-user "No such user.")))))
+
+(defmethod authenticate :with-google
+  [res {:keys [with-google]}]
+  (let [jwt (:token with-google)
+        auth-ex-fn (fn [ex]
+                     (throw
+                      (ex/new-auth-exception :google/auth-failed "Google Auth Failed" {} ex)))
+        {:keys [email]} (google-auth/verify-token jwt)]
+    (try
+      (let [{:keys [email]} (google-oauth/verify-token jwt)]
+        (assert email "We don't handle anonymous logins.")
+        (if-let [{:keys [user-id]} (find-email-channel res email)]
+          (user-id->auth-response res user-id)
+          (throw (ex/new-auth-exception :user/no-such-user "No such user."))))
+      (catch Exception ex
+        (throw
+         (ex/new-auth-exception :google/auth-failed "Google Auth Failed" {} ex))))))
 
 (defmethod authenticate :with-token
   [res {:keys [with-token]}]
