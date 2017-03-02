@@ -267,7 +267,7 @@
         auth-ex-fn (fn [ex]
                      (throw
                       (ex/new-auth-exception :google/auth-failed "Google Auth Failed" {} ex)))
-        {:keys [email]} (google-auth/verify-token jwt)]
+        {:keys [email]} (google-oauth/verify-token jwt)]
     (try
       (let [{:keys [email]} (google-oauth/verify-token jwt)]
         (assert email "We don't handle anonymous logins.")
