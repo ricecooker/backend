@@ -60,6 +60,9 @@ create table channel (
 create unique index unq_channel_channel_type_identifier on channel(channel_type_id,identifier);
 create index idx_channel_user_id on channel(user_id);
 
+create trigger tg_channel_audit before insert or update or delete on channel
+for each row execute procedure audit.channel_audit();
+
 create table address (
    id serial primary key
  , street_1    varchar(50)
