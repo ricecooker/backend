@@ -80,19 +80,20 @@
          (log/infof "%s %s %s" request-method uri (or status ""))
          resp)
        (catch e85th.commons.exceptions.ValidationExceptionInfo ex
-         (let [errors (-> ex ex/type+msgs second)]
-           (log/infof "%s %s 422 %s" request-method uri errors)
-           (http-response/unprocessable-entity {:errors errors})))
+         (let [[error-code :as error-tuple] (ex/error-tuple ex)]
+           (log/infof "%s %s 422 %s" request-method uri error-code)
+           (http-response/unprocessable-entity {:errors [error-tuple]})))
        (catch e85th.commons.exceptions.AuthExceptionInfo ex
          (log/infof "%s %s 401" request-method uri)
-         (http-response/unauthorized {:errors (-> ex ex/type+msgs second)}))
+         (http-response/unauthorized {:errors [(ex/error-tuple ex)]}))
        (catch clojure.lang.ExceptionInfo ex
          (log/debug ex)
          (let [{:keys [type error] :as data} (ex-data ex) ;; compojure api exceptions
-               [ex-type ex-msgs] (ex/type+msgs ex)
+               [ex-type ex-msg data] (ex/error-tuple ex)
                ;; normalize to have just one type, errors
                ex-type (or type ex-type)
-               errors {:errors (or error ex-msgs)}]
+               error-tuple (ex/error-tuple ex-type (or error ex-msg) data)
+               errors {:errors [error-tuple]}]
            (condp = ex-type
              :compojure.api.exception/request-validation (do
                                                            (log/infof "%s %s 400" request-method uri)
@@ -106,11 +107,12 @@
                (on-ex-fn req ex)
                (throw ex)))))
        (catch Exception ex
-         (let [uuid (u/uuid)]
+         (let [uuid (u/uuid)
+               error-tuple (ex/error-tuple :http/internal-server-error (str "Unexpected server error. " uuid) {:uuid uuid})]
            (u/log-throwable ex uuid)
            (log/errorf "req %s, message: %s" (web/raw-request req) (.getMessage ex))
            (on-ex-fn req ex)
-           (http-response/internal-server-error {:errors [(str "Unexpected server error. " uuid)]})))))))
+           (http-response/internal-server-error {:errors [error-tuple]})))))))
 
 (defn wrap-site-exception-handling
   "Exception handling for websites, also logs request disposition.
@@ -129,10 +131,10 @@
       (catch clojure.lang.ExceptionInfo ex
         (log/debug ex)
         (let [{:keys [type error] :as data} (ex-data ex) ;; compojure api exceptions
-              [ex-type ex-msgs] (ex/type+msgs ex)
+              [ex-type ex-msg] (ex/type+msg ex)
               ;; normalize to have just one type, errors
               ex-type (or type ex-type)
-              errors {:errors (or error ex-msgs)}]
+              errors {:errors [[ex-type (or error ex-msg)]]}]
           (condp = ex-type
             :compojure.api.exception/request-validation (do
                                                           (log/infof "%s %s 400" request-method uri)

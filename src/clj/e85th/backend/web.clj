@@ -3,6 +3,7 @@
             [compojure.api.meta :as meta]
             ;[compojure.api.sweet :refer [defapi defroutes context GET POST ANY]]
             [e85th.commons.util :as u]
+            [e85th.commons.ex :as ex]
             [ring.swagger.json-schema :as json-schema]
             [e85th.commons.geo] ; to load LatLng
             [schema.core :as s]))
@@ -112,7 +113,7 @@
         (assoc :body `((let [[authorized?# msg#] (authorized? ~auth-params)]
                          (if authorized?#
                            (do ~@body)
-                           (http-response/forbidden {:errors (u/as-coll msg#)}))))))))
+                           (http-response/forbidden {:errors [(ex/error-tuple :http/forbidden msg# {})]}))))))))
 
 
 (comment

@@ -14,13 +14,16 @@
             [clojure.java.jdbc :as jdbc]
             [clojure.set :as set]
             [schema.core :as s]
+            [clojure.core.match :refer [match]]
             [e85th.commons.token :as token]
-            [e85th.backend.core.models :as cm]
-            [e85th.commons.email :as email]))
+            [e85th.commons.email :as email]
+            [clojure.string :as str]))
 
 (def duplicate-channel-ex ::duplicate-channel-ex)
 (def password-required-ex ::password-required-ex)
 (def channel-auth-failed-ex ::channel-auth-failed-ex)
+(def channel-verification-failed-ex ::channel-verification-failed-ex)
+(def channel-in-use ::channel-in-use)
 
 (s/defn find-user-all-fields-by-id :- (s/maybe m/UserAllFields)
   "This exists to make it a little bit harder to expose the password digest."
@@ -45,8 +48,11 @@
 
 (s/defn find-channels-by-user-id :- [m/Channel]
   "Enumerates all channels by the user-id."
-  [{:keys [db]} user-id :- s/Int]
-  (db/select-channels-by-user-id db user-id))
+  ([{:keys [db]} user-id :- s/Int]
+   (db/select-channels-by-user-id db user-id))
+  ([res user-id :- s/Int ch-type-id :- s/Int]
+   (->> (find-channels-by-user-id res user-id)
+        (filter (u/key= :channel-type-id ch-type-id)))))
 
 (s/defn find-channels-by-identifier :- [m/Channel]
   "Enumerate all channels matching the identifier."
@@ -76,14 +82,84 @@
 (s/defn create-channel :- m/Channel
   "Creates a new channel and returns the Channel record."
   [{:keys [db] :as res} channel :- m/NewChannel user-id :- s/Int]
-  (->> (db/insert-channel db channel user-id)
+  (->> (db/insert-channel db (m/normalize-identifier channel) channel user-id)
        (find-channel-by-id res)))
 
 (s/defn update-channel :- m/Channel
   "Update the channel attributes and return the updated Channel record."
   [{:keys [db] :as res} channel-id :- s/Int channel :- m/UpdateChannel user-id :- s/Int]
-  (db/update-channel db channel-id channel user-id)
+  (db/update-channel db channel-id (m/normalize-identifier channel) user-id)
   (find-channel-by-id! res channel-id))
+
+(s/defn rm-channel
+  [{:keys [db]} channel-id :- s/Int]
+  (db/delete-channel db channel-id))
+
+(s/defn ensure-channel
+  "Ensures the channel exists for the user. Returns a variant [status ch]
+   Status can be :ok if already exists,
+   or ::channel-in-use if the channel already belongs to another user
+   or :created when the new channel is created."
+  [res
+   {:keys [channel-type-id identifier user-id] :as new-chan} :- m/NewChannel
+   modifier-user-id :- s/Int]
+  (let [ch (find-channel-by-type res channel-type-id identifier)]
+    (if ch
+      (if (= user-id (:user-id ch))
+        [:ok ch]
+        [channel-in-use ch])
+      [:created (create-channel res new-chan modifier-user-id)])))
+
+(defn channel-used-by-another?
+  "Answers if channel is being used by another user."
+  [res channel-type-id identifier user-id]
+  (if-let [ch (find-channel-by-type res channel-type-id identifier)]
+    (not= (:user-id ch) user-id)
+    false))
+
+(defn persist-channel
+  "Either a variant [status channel] Status can be one of :no-action :created :removed :updated or channel-in-use
+   channel can be nil when no-action is required in the degenerate case of persisting blank identifier
+   when no channel exists for that channel-type.
+   Expects there to be at most 1 channel for the type otherwise throws an exception."
+  [{:keys [db] :as res} {:keys [user-id identifier channel-type-id] :as new-data} clear-verified? modifier-user-id]
+  (if (and (seq identifier)
+           (channel-used-by-another? res channel-type-id identifier user-id))
+    [channel-in-use nil]
+    (let [chans (find-channels-by-user-id res user-id channel-type-id)
+          ch (first chans)
+          new-identifier (:identifier new-data)
+          data (cond-> new-data
+                 clear-verified? (assoc :verified-at nil))]
+
+      (match [(count chans)
+              (if (str/blank? new-identifier) :new-blank :new-some)
+              (if (= new-identifier (:identifier ch)) :unchanged :changed)]
+             [0 :new-blank _] [:no-action nil]
+             [0 :new-some _] [:created (create-channel res (dissoc new-data :verified-at) modifier-user-id)]
+             [1 :new-blank _] [:removed (rm-channel res (:id ch))]
+             [1 :new-some :changed] [:updated (update-channel res (:id ch) new-data modifier-user-id)]
+             [1 :new-some :unchanged] [:no-action ch]
+             :else (throw (ex-info "Expected at most 1 channel." {:data new-data
+                                                                  :count (count chans)}))))))
+
+(s/defn persist-email :- m/ChannelPersistResult
+  "Updates in place the email associated with the user only if it differs.
+   Expects there to only be one email channel otherwise throws an exception."
+  [res user-id :- s/Int new-email :- (s/maybe s/Str) clear-verified? :- s/Bool modifier-user-id :- s/Int]
+  (let [data {:user-id user-id
+              :identifier (some-> new-email email/normalize)
+              :channel-type-id m/email-channel-type-id}]
+    (persist-channel res data clear-verified? modifier-user-id)))
+
+(s/defn persist-mobile :- m/ChannelPersistResult
+  "Updates in place the email associated with the user only if it differs.
+   Expects there to only be one email channel otherwise throws an exception."
+  [res user-id :- s/Int new-mobile :- (s/maybe s/Str) clear-verified? :- s/Bool modifier-user-id :- s/Int]
+  (let [data {:user-id user-id
+              :identifier (some-> new-mobile tel/normalize)
+              :channel-type-id m/mobile-channel-type-id}]
+    (persist-channel res data clear-verified? modifier-user-id)))
 
 ;; -- New User
 (s/defn filter-existing-identifiers :- [m/ChannelIdentifier]
@@ -97,21 +173,20 @@
    Throws a validation exception when an identifier exists."
   [res {:keys [channels]} :- m/NewUser]
   (when-let [{:keys [identifier]} (first (filter-existing-identifiers res channels))]
-    (throw (ex/new-validation-exception duplicate-channel-ex (format "Identifier %s already exists." identifier)))))
+    (throw (ex/validation duplicate-channel-ex (format "Identifier %s already exists." identifier)))))
 
 (s/defn validate-new-user
   [res {:keys [channel-type-id password] :as new-user} :- m/NewUser]
   (validate-channel-identifiers res new-user)
   (when (= m/email-channel-type-id channel-type-id)
     (when-not (seq password)
-      (throw (ex/new-validation-exception password-required-ex "Passowrd is required for e-mail signup.")))))
+      (throw (ex/validation password-required-ex "Passowrd is required for e-mail signup.")))))
 
-(s/defn ^:private new-user->user :- m/CreateUser
-  "User record with password-digest."
-  [{:keys [password] :as new-user}]
-  (-> new-user
-      (select-keys [:first-name :last-name])
-      (assoc :password-digest (some-> password hashers/derive))))
+(s/defn ^:private user->user-save :- m/UserSave
+  "User record with password-digest if password is present."
+  [{:keys [password] :as user}]
+  (cond-> (select-keys user [:first-name :last-name])
+    (seq password) (assoc :password-digest (hashers/derive password))))
 
 (defn- new-user->channels
   "NewUser to map required for inserting into channel."
@@ -136,7 +211,7 @@
   "Creates a new user from a channel."
   [{:keys [db] :as res} {:keys [channels roles] :as new-user} :- m/NewUser creator-id :- s/Int]
   (validate-new-user res new-user)
-  (let [user-record (new-user->user new-user)
+  (let [user-record (user->user-save new-user)
         user-id (volatile! nil)]
     (jdbc/with-db-transaction [txn db]
       (vreset! user-id (db/insert-user txn user-record creator-id))
@@ -146,6 +221,11 @@
         (create-user-address (assoc res :db txn) @user-id address creator-id)))
 
     (find-user-by-id res @user-id)))
+
+(s/defn update-user
+  [{:keys [db] :as res} user-id :- s/Int user :- m/UpdateUser updater-user-id]
+  (let [user-record (user->user-save user)]
+    (db/update-user db user-id user-record updater-user-id)))
 
 (s/defn find-user-auth :- m/UserAuth
   "Finds roles and permissions for the user specified by user-id."
@@ -196,13 +276,23 @@
   (assert token-factory)
   (token/token->data! token-factory token))
 
+(s/defn verify-channel :- m/Channel
+  "Verify the channel if the token is valid. Returns the updated channel or throws an auth exception"
+  [{:keys [db] :as res} token :- s/Str]
+  (let [{:keys [id user-id verified-at] :as chan} (db/select-channel-by-token db token)]
+    (when-not chan
+      (throw (ex/auth channel-auth-failed-ex "Invalid token.")))
+    (let [channel-update (cond-> {:token nil :token-expiration nil}
+                           (not verified-at) (assoc :verified-at (t/now)))]
+      (update-channel res id channel-update user-id))))
+
 (s/defn ^:private auth-with-token :- s/Int
   "Check the identifier and token combination is not yet expired. Answers with the user-id.
    Throws exceptions if unexpired identifier and token combo is not found."
   [{:keys [db] :as res} identifier :- s/Str token :- s/Str]
   (let [{:keys [id user-id verified-at] :as chan} (db/select-channel-for-user-auth db identifier token)]
     (when-not chan
-      (throw (ex/new-auth-exception channel-auth-failed-ex "Auth failed.")))
+      (throw (ex/auth channel-auth-failed-ex "Auth failed.")))
     (let [channel-update (cond-> {:token nil :token-expiration nil}
                            (not verified-at) (assoc :verified-at (t/now)))]
       (update-channel res id channel-update user-id)
@@ -236,7 +326,7 @@
   [{:keys [db]} user-id :- s/Int role-ids :- [s/Int] editor-user-id :- s/Int]
   (db/delete-user-roles db user-id (set role-ids)))
 
-(s/defn delete-user
+(s/defn rm-user
   [{:keys [db]} user-id :- s/Int delete-user-id :- s/Int]
   (db/delete-user db user-id))
 
@@ -252,31 +342,31 @@
   (let [jwt (:token with-firebase)
         auth-ex-fn (fn [ex]
                      (throw
-                      (ex/new-auth-exception :firebase/auth-failed "Firebase Auth Failed" {} ex)))
+                      (ex/auth :firebase/auth-failed "Firebase Auth Failed" {} ex)))
         {:keys [email]} (firebase/verify-id-token! jwt auth-ex-fn)]
 
     (assert email "We don't handle anonymous logins a la firebase.")
 
     (if-let [{:keys [user-id]} (find-email-channel res email)]
       (user-id->auth-response res user-id)
-      (throw (ex/new-auth-exception :user/no-such-user "No such user.")))))
+      (throw (ex/auth :user/no-such-user "No such user.")))))
 
 (defmethod authenticate :with-google
   [res {:keys [with-google]}]
   (let [jwt (:token with-google)
         auth-ex-fn (fn [ex]
                      (throw
-                      (ex/new-auth-exception :google/auth-failed "Google Auth Failed" {} ex)))
+                      (ex/auth :google/auth-failed "Google Auth Failed" {} ex)))
         {:keys [email]} (google-oauth/verify-token jwt)]
     (try
       (let [{:keys [email]} (google-oauth/verify-token jwt)]
         (assert email "We don't handle anonymous logins.")
         (if-let [{:keys [user-id]} (find-email-channel res email)]
           (user-id->auth-response res user-id)
-          (throw (ex/new-auth-exception :user/no-such-user "No such user."))))
+          (throw (ex/auth :user/no-such-user "No such user."))))
       (catch Exception ex
         (throw
-         (ex/new-auth-exception :google/auth-failed "Google Auth Failed" {} ex))))))
+         (ex/auth :google/auth-failed "Google Auth Failed" {} ex))))))
 
 (defmethod authenticate :with-token
   [res {:keys [with-token]}]
@@ -295,9 +385,9 @@
                                               (find-user-all-fields-by-id res))]
 
     (when-not (seq password-digest)
-      (throw (ex/new-auth-exception :user/invalid-password "Invalid password.")))
+      (throw (ex/auth :user/invalid-password "Invalid password.")))
 
     (when-not (hashers/check password password-digest)
-      (throw (ex/new-auth-exception :user/invalid-password "Invalid password.")))
+      (throw (ex/auth :user/invalid-password "Invalid password.")))
 
     (user-id->auth-response res id)))

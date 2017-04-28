@@ -9,14 +9,17 @@
 
 (def-db-fns "sql/e85th/backend/core.sql")
 
-(def ^{:private true
-       :doc "Escaped keyword for ease of use"}
+(def ^{:doc "Escaped keyword for ease of use"}
   user-tbl (keyword "\"user\""))
 
 (s/defn insert-user :- s/Int
   "Insert the user record and return the id for the row"
-  [db new-user :- m/CreateUser user-id :- s/Int]
+  [db new-user :- m/UserSave user-id :- s/Int]
   (:id (sql/insert! db user-tbl new-user user-id)))
+
+(s/defn update-user :- s/Int
+  [db user-id user-update updater-user-id]
+  (sql/update! db user-tbl (dissoc user-update :id) ["id = ?" user-id] updater-user-id))
 
 (s/defn insert-channel :- s/Int
   [db channel :- m/NewChannel user-id :- s/Int]
@@ -33,6 +36,10 @@
 (s/defn delete-user
   [db user-id :- s/Int]
   (sql/delete! db user-tbl ["id = ?" user-id]))
+
+(s/defn delete-channel
+  [db channel-id :- s/Int]
+  (sql/delete! db :channel ["id = ?" channel-id]))
 
 (def ^:private default-channel-params
   {:id-nil? true
@@ -89,6 +96,15 @@
                    (merge default-channel-params)
                    (select-channels db))]
     (assert (<=  (count chans) 1) "Expected at most 1 chan to match.")
+    (first chans)))
+
+(s/defn select-channel-by-token :-  (s/maybe m/Channel)
+  [db token :- s/Str]
+  (let [chans (->> {:token-nil? false :token token
+                    :token-expiration-nil? false :token-expiration (t/now)}
+                   (merge default-channel-params)
+                   (select-channels db))]
+    (assert (<= (count chans) 1) "Expected at most 1 chan to match.")
     (first chans)))
 
 (s/defn insert-address :- s/Int

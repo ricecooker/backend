@@ -1,5 +1,7 @@
 (ns e85th.backend.core.models
   (:require [schema.core :as s]
+            [e85th.commons.email :as email]
+            [e85th.commons.tel :as tel]
             [e85th.commons.util :as u])
   (:import [org.joda.time DateTime]))
 
@@ -69,10 +71,10 @@
 (s/defschema UpdateAddress
   (u/make-all-keys-optional NewAddress))
 
-(s/defschema CreateUser
+(s/defschema UserSave
   {:first-name s/Str
    :last-name s/Str
-   :password-digest (s/maybe s/Str)})
+   (s/optional-key :password-digest) (s/maybe s/Str)})
 
 (s/defschema ChannelIdentifier
   {:channel-type-id s/Int
@@ -86,6 +88,10 @@
    (s/optional-key :password) s/Str
    (s/optional-key :address) NewAddress})
 
+(s/defschema UpdateUser
+  {:first-name s/Str
+   :last-name s/Str
+   (s/optional-key :password) s/Str})
 
 (s/defschema UserAuth
   {:roles #{s/Keyword}
@@ -131,3 +137,16 @@
    (s/optional-key :with-google) WithGoogleAuth
    (s/optional-key :with-token) WithTokenAuth
    (s/optional-key :with-password) WithPasswordAuth})
+
+
+(s/defschema ChannelPersistResult
+  [(s/one s/Keyword "status")
+   (s/one (s/maybe Channel) "channel")])
+
+
+(defn normalize-identifier
+  [{:keys [channel-type-id] :as ch}]
+  (condp = channel-type-id
+    email-channel-type-id (update ch :identifier email/normalize)
+    mobile-channel-type-id (update ch :identifier tel/normalize)
+    :else ch))
