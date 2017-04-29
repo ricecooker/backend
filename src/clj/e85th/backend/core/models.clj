@@ -2,7 +2,8 @@
   (:require [schema.core :as s]
             [e85th.commons.email :as email]
             [e85th.commons.tel :as tel]
-            [e85th.commons.util :as u])
+            [e85th.commons.util :as u]
+            [clojure.string :as str])
   (:import [org.joda.time DateTime]))
 
 (def ^{:doc "mobile phone channel"}
@@ -144,9 +145,13 @@
    (s/one (s/maybe Channel) "channel")])
 
 
+(def channel-type->normalizer
+  {email-channel-type-id email/normalize
+   mobile-channel-type-id tel/normalize})
+
 (defn normalize-identifier
-  [{:keys [channel-type-id] :as ch}]
-  (condp = channel-type-id
-    email-channel-type-id (update ch :identifier email/normalize)
-    mobile-channel-type-id (update ch :identifier tel/normalize)
-    :else ch))
+  [{:keys [channel-type-id identifier] :as ch}]
+  (if (str/blank? identifier)
+    ch
+    (let [f (get channel-type->normalizer channel-type-id identity)]
+      (update ch :identifier f))))
