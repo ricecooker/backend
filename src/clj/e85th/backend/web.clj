@@ -88,7 +88,7 @@
   (fn [request]
     (if (:identity request)
       (handler request)
-      (http-response/unauthorized {:errors [(ex/error-tuple :http/unauthorized "Not authenticated.")]}))))
+      (http-response/unauthorized {:errors [(ex/error-tuple :http/unauthorized "Not authenticated." {})]}))))
 
 ;; Implementations must return a variant [authorized? msg]
 (defmulti authorized? :auth-type)
