@@ -108,7 +108,8 @@
     (first chans)))
 
 (s/defn insert-address :- s/Int
-  [db address :- m/NewAddress creator-id :- s/Int]
+  [db address :- m/Address creator-id :- s/Int]
+  (assert (not (contains? address :id)))
   (:id (sql/insert! db :address address creator-id)))
 
 (s/defn update-address

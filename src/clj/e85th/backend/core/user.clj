@@ -203,7 +203,7 @@
        (address/find-addresses-by-ids res)))
 
 (s/defn ^:private create-user-address
-  [{:keys [db] :as res} user-id :- s/Int address :- m/NewAddress creator-id :- s/Int]
+  [{:keys [db] :as res} user-id :- s/Int address :- m/Address creator-id :- s/Int]
   (let [address-id (:id (address/create-address res address creator-id))]
     (db/insert-user-address db user-id address-id creator-id)))
 

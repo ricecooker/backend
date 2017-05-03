@@ -57,7 +57,7 @@
    :message-body s/Str})
 
 (s/defschema Address
-  {:id s/Int
+  {(s/optional-key :id) s/Int
    :street-1 (s/maybe s/Str)
    :street-2 (s/maybe s/Str)
    :city s/Str
@@ -66,11 +66,8 @@
    :lat (s/maybe s/Num)
    :lng (s/maybe s/Num)})
 
-(s/defschema NewAddress
-  (dissoc Address :id))
-
 (s/defschema UpdateAddress
-  (u/make-all-keys-optional NewAddress))
+  (u/make-all-keys-optional Address))
 
 (s/defschema UserSave
   {:first-name s/Str
@@ -87,7 +84,7 @@
    :channels [ChannelIdentifier]
    :roles #{s/Int}
    (s/optional-key :password) s/Str
-   (s/optional-key :address) NewAddress})
+   (s/optional-key :address) Address})
 
 (s/defschema UpdateUser
   {:first-name s/Str

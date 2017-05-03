@@ -64,7 +64,7 @@
   [_ [item expr error-msg] {:keys [body] :as acc}]
   (assert (symbol? item) "Please specify a symbol to bind the expression to for :exists.")
   (assert expr "Please specify an expression for :exists")
-  (let [errors (u/as-coll (or error-msg "Resource not found."))]
+  (let [errors [(ex/error-tuple :http/not-found (or error-msg "Resource not found.") {})]]
     (-> acc
         (update-in [:letks] into [item expr])
         (assoc :body `((if ~item
@@ -72,6 +72,7 @@
                          (http-response/not-found {:errors ~errors})))))))
 
 
+;; validate-expr should return ex/error-tuple(s)
 (defmethod meta/restructure-param :validate restructure-validate
   [_ validate-expr {:keys [body] :as acc}]
   (-> acc
@@ -87,7 +88,7 @@
   (fn [request]
     (if (:identity request)
       (handler request)
-      (http-response/unauthorized {:errors ["Not authenticated."]}))))
+      (http-response/unauthorized {:errors [(ex/error-tuple :http/unauthorized "Not authenticated.")]}))))
 
 ;; Implementations must return a variant [authorized? msg]
 (defmulti authorized? :auth-type)
