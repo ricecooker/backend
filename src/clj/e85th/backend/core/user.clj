@@ -82,7 +82,7 @@
 (s/defn create-channel :- m/Channel
   "Creates a new channel and returns the Channel record."
   [{:keys [db] :as res} channel :- m/NewChannel user-id :- s/Int]
-  (->> (db/insert-channel db (m/normalize-identifier channel) channel user-id)
+  (->> (db/insert-channel db (m/normalize-identifier channel) user-id)
        (find-channel-by-id res)))
 
 (s/defn update-channel :- m/Channel
