@@ -75,7 +75,7 @@
 (s/defn find-email-channel :- (s/maybe m/Channel)
   "Finds an email channel for the given email address."
   [res email :- s/Str]
-  (find-channel-by-type res m/email-channel-type-id email))
+  (find-channel-by-type res m/email-channel-type-id (email/normalize email)))
 
 (def find-email-channel! (ex/wrap-not-found find-email-channel))
 
