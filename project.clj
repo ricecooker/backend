@@ -1,11 +1,11 @@
-(defproject e85th/backend "0.1.25"
+(defproject e85th/backend "0.1.26"
   :description "Backend server code."
   :url "https://github.com/e85th/backend"
   :license {:name "Apache License 2.0"
             :url "http://www.apache.org/licenses/LICENSE-2.0"}
   :dependencies [[org.clojure/clojure "1.9.0-alpha15" :scope "provided"]
                  [org.clojure/core.match "0.3.0-alpha4"]
-                 [e85th/commons "0.1.15"]
+                 [e85th/commons "0.1.16"]
                  [org.clojure/core.async "0.3.442"] ;; override sente version for spec ns
                  [com.taoensso/sente "1.11.0"] ; websockets
                  [com.layerware/hugsql "0.4.6"]
