@@ -5,11 +5,11 @@ create schema audit authorization dba;
 create table audit.user (
     op char(1)
   , ts timestamp
-  , username varchar(25)
+  , username text
   , id integer
-  , first_name varchar(50)
-  , last_name varchar(50)
-  , password_digest varchar(100)
+  , first_name text
+  , last_name text
+  , password_digest text
   , created_at timestamp
   , created_by integer
   , updated_at timestamp
@@ -36,12 +36,12 @@ language plpgsql;
 create table audit.channel (
     op char(1)
   , ts timestamp
-  , username varchar(25)
+  , username text
   , id integer
   , user_id integer
   , channel_type_id integer
-  , identifier varchar(50)
-  , token varchar(50)
+  , identifier text
+  , token text
   , token_expiration timestamp
   , verified_at timestamp
   , created_at timestamp
@@ -70,13 +70,13 @@ language plpgsql;
 create table audit.address (
    op          char(1)
  , ts          timestamp
- , username    varchar(25)
+ , username    text
  , id          integer
- , street_1    varchar(50)
- , street_2    varchar(20)
- , city        varchar(50)
- , state       varchar(50)
- , postal_code varchar(9)
+ , street_1    text
+ , street_2    text
+ , city        text
+ , state       text
+ , postal_code text
  , lat         decimal(9,6)
  , lng         decimal(9,6)
  , created_at  timestamp
@@ -106,7 +106,7 @@ language plpgsql;
 create table audit.user_address (
     op char(1)
   , ts timestamp
-  , username varchar(25)
+  , username text
   , id integer
   , user_id integer
   , address_id integer
@@ -137,10 +137,10 @@ language plpgsql;
 create table audit.permission (
     op char(1)
   , ts timestamp
-  , username varchar(25)
+  , username text
   , id integer
-  , name varchar(50)
-  , description varchar(100)
+  , name text
+  , description text
   , created_at timestamp
   , created_by integer
   , updated_at timestamp
@@ -168,10 +168,10 @@ language plpgsql;
 create table audit.role (
     op char(1)
   , ts timestamp
-  , username varchar(25)
+  , username text
   , id integer
-  , name varchar(50)
-  , description varchar(100)
+  , name text
+  , description text
   , created_at timestamp
   , created_by integer
   , updated_at timestamp
@@ -198,7 +198,7 @@ language plpgsql;
 create table audit.role_permission (
     op char(1)
   , ts timestamp
-  , username varchar(25)
+  , username text
   , id integer
   , role_id integer
   , permission_id integer
@@ -226,7 +226,7 @@ language plpgsql;
 create table audit.user_role (
     op char(1)
   , ts timestamp
-  , username varchar(25)
+  , username text
   , id integer
   , user_id integer
   , role_id integer

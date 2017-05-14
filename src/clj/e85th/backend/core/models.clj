@@ -70,8 +70,8 @@
   (u/make-all-keys-optional Address))
 
 (s/defschema UserSave
-  {:first-name s/Str
-   :last-name s/Str
+  {(s/optional-key :first-name) s/Str
+   (s/optional-key :last-name) s/Str
    (s/optional-key :password-digest) (s/maybe s/Str)})
 
 (s/defschema ChannelIdentifier
@@ -87,8 +87,8 @@
    (s/optional-key :address) Address})
 
 (s/defschema UpdateUser
-  {:first-name s/Str
-   :last-name s/Str
+  {(s/optional-key :first-name) s/Str
+   (s/optional-key :last-name) s/Str
    (s/optional-key :password) s/Str})
 
 (s/defschema UserAuth

@@ -16,9 +16,9 @@ drop table if exists "user";
 
 create table "user" (
     id serial primary key
-  , first_name varchar(50) not null
-  , last_name varchar(50) not null
-  , password_digest varchar(100) null -- nullable ie if you use social login
+  , first_name text not null
+  , last_name text not null
+  , password_digest text null -- nullable ie if you use social login
   , created_at timestamp not null default now()
   , created_by integer not null
   , updated_at timestamp not null default now()
@@ -33,7 +33,7 @@ insert into "user"(first_name, last_name, created_by, updated_by)
 
 create table channel_type (
     id serial primary key
-  , name varchar(20) not null
+  , name text not null
   , created_at timestamp not null default now()
   , created_by integer not null references "user"(id)
 );
@@ -47,8 +47,8 @@ create table channel (
     id serial primary key
   , user_id integer not null references "user"(id)
   , channel_type_id integer not null references channel_type(id)
-  , identifier varchar(50) not null -- email address, google id, phone #, etc
-  , token varchar(50) null -- token used for verification
+  , identifier text not null -- email address, google id, phone #, etc
+  , token text null -- token used for verification
   , token_expiration timestamp null
   , verified_at timestamp null
   , created_at timestamp not null default now()
@@ -59,17 +59,18 @@ create table channel (
 
 create unique index unq_channel_channel_type_identifier on channel(channel_type_id,identifier);
 create index idx_channel_user_id on channel(user_id);
+create unique index unq_channel_token on channel(token);
 
 create trigger tg_channel_audit before insert or update or delete on channel
 for each row execute procedure audit.channel_audit();
 
 create table address (
    id serial primary key
- , street_1    varchar(50)
- , street_2    varchar(20)
- , city        varchar(50)    not null
- , state       varchar(50)    not null
- , postal_code varchar(9)
+ , street_1    text
+ , street_2    text
+ , city        text    not null
+ , state       text    not null
+ , postal_code text
  , lat         decimal(9,6)
  , lng         decimal(9,6)
  , created_at  timestamp      not null default now()
@@ -100,8 +101,8 @@ create trigger tg_user_address_audit before insert or update or delete on user_a
 --
 create table "permission" (
     id serial primary key
-  , name varchar(50) not null
-  , description varchar(100) not null
+  , name text not null
+  , description text not null
   , created_at timestamp not null default now()
   , created_by integer not null references "user"(id)
   , updated_at timestamp not null default now()
@@ -115,8 +116,8 @@ create trigger tg_permission_audit before insert or update or delete on "permiss
 
 create table "role" (
     id serial primary key
-  , name varchar(50) not null
-  , description varchar(100) not null
+  , name text not null
+  , description text not null
   , created_at timestamp not null default now()
   , created_by integer not null references "user"(id)
   , updated_at timestamp not null default now()
@@ -162,7 +163,7 @@ create trigger tg_user_role_audit before insert or update or delete on user_role
 create table user_event (
     id serial primary key
   , user_id integer not null references "user"(id)
-  , name varchar(100) not null
+  , name text not null
   , doc jsonb not null
   , created_at timestamp not null
 );

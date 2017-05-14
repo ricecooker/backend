@@ -57,53 +57,54 @@
    :verified-at-nil? true
    :verified-at nil})
 
+(s/defn select-channels*
+  [db params]
+  (->> (merge default-channel-params params)
+       (select-channels db)))
+
 (s/defn select-channels-by-user-id :- [m/Channel]
   "Select channels by user-id"
   [db user-id :- s/Int]
-  (->> {:user-id-nil? false :user-id user-id}
-       (merge default-channel-params)
-       (select-channels db)))
+  (select-channels* db {:user-id-nil? false :user-id user-id}))
 
 (s/defn select-channel-by-id :- (s/maybe m/Channel)
   [db id :- s/Int]
-  (->> {:id-nil? false :id id}
-       (merge default-channel-params)
-       (select-channels db)
-       first))
+  (first (select-channels* db {:id-nil? false :id id})))
 
 (s/defn select-channel-by-type :- (s/maybe m/Channel)
   "Select channel by the channel type and identifier."
   [db channel-type-id :- s/Int identifier :- s/Str]
-  (let [rs (->> {:channel-type-id-nil? false :channel-type-id channel-type-id
-                 :identifier-nil? false :identifier identifier}
-                (merge default-channel-params)
-                (select-channels db))]
+  (let [params {:channel-type-id-nil? false :channel-type-id channel-type-id
+                :identifier-nil? false :identifier identifier}
+        rs (select-channels* db params)]
     (assert (<= (count rs) 1)
             (format "Expected at most 1 row for channel-type %s, identifier %s" channel-type-id identifier))
     (first rs)))
 
 (s/defn select-channels-by-identifier :- [m/Channel]
   [db identifier :- s/Str]
-  (->> {:identifier-nil? false :identifier identifier}
-       (merge default-channel-params)
-       (select-channels db)))
+  (select-channels* db {:identifier-nil? false :identifier identifier}))
 
 (s/defn select-channel-for-user-auth :- (s/maybe m/Channel)
   [db identifier :- s/Str token :- s/Str]
-  (let [chans (->> {:identifier-nil? false :identifier identifier
-                    :token-nil? false :token token
-                    :token-expiration-nil? false :token-expiration (t/now)}
-                   (merge default-channel-params)
-                   (select-channels db))]
+  (let [params {:identifier-nil? false :identifier identifier
+                :token-nil? false :token token
+                :token-expiration-nil? false :token-expiration (t/now)}
+        chans (select-channels* db params)]
     (assert (<=  (count chans) 1) "Expected at most 1 chan to match.")
     (first chans)))
 
-(s/defn select-channel-by-token :-  (s/maybe m/Channel)
+(s/defn select-channel-by-token :- (s/maybe m/Channel)
   [db token :- s/Str]
-  (let [chans (->> {:token-nil? false :token token
-                    :token-expiration-nil? false :token-expiration (t/now)}
-                   (merge default-channel-params)
-                   (select-channels db))]
+  (let [chans (select-channels* db {:token-nil? false :token token})]
+    (assert (<= (count chans) 1) "Expected at most 1 chan to match.")
+    (first chans)))
+
+(s/defn select-channel-by-active-token :- (s/maybe m/Channel)
+  [db token :- s/Str]
+  (let [params {:token-nil? false :token token
+                :token-expiration-nil? false :token-expiration (t/now)}
+        chans (select-channels* db params)]
     (assert (<= (count chans) 1) "Expected at most 1 chan to match.")
     (first chans)))
 

@@ -24,6 +24,8 @@
 (def channel-auth-failed-ex ::channel-auth-failed-ex)
 (def channel-verification-failed-ex ::channel-verification-failed-ex)
 (def channel-in-use ::channel-in-use)
+(def token-expired ::token-expired)
+(def token-invalid ::token-invalid)
 
 (s/defn find-user-all-fields-by-id :- (s/maybe m/UserAllFields)
   "This exists to make it a little bit harder to expose the password digest."
@@ -103,12 +105,11 @@
   [res
    {:keys [channel-type-id identifier user-id] :as new-chan} :- m/NewChannel
    modifier-user-id :- s/Int]
-  (let [ch (find-channel-by-type res channel-type-id identifier)]
-    (if ch
-      (if (= user-id (:user-id ch))
-        [:ok ch]
-        [channel-in-use ch])
-      [:created (create-channel res new-chan modifier-user-id)])))
+  (if-let [ch (find-channel-by-type res channel-type-id identifier)]
+    (if (= user-id (:user-id ch))
+      [:ok ch]
+      [channel-in-use ch])
+    [:created (create-channel res new-chan modifier-user-id)]))
 
 (defn channel-used-by-another?
   "Answers if channel is being used by another user."
@@ -276,16 +277,6 @@
   (assert token-factory)
   (token/token->data! token-factory token))
 
-(s/defn verify-channel :- m/Channel
-  "Verify the channel if the token is valid. Returns the updated channel or throws an auth exception"
-  [{:keys [db] :as res} token :- s/Str]
-  (let [{:keys [id user-id verified-at] :as chan} (db/select-channel-by-token db token)]
-    (when-not chan
-      (throw (ex/auth channel-auth-failed-ex "Invalid token.")))
-    (let [channel-update (cond-> {:token nil :token-expiration nil}
-                           (not verified-at) (assoc :verified-at (t/now)))]
-      (update-channel res id channel-update user-id))))
-
 (s/defn ^:private auth-with-token :- s/Int
   "Check the identifier and token combination is not yet expired. Answers with the user-id.
    Throws exceptions if unexpired identifier and token combo is not found."
@@ -391,3 +382,38 @@
       (throw (ex/auth :user/invalid-password "Invalid password.")))
 
     (user-id->auth-response res id)))
+
+(s/defn verify-channel :- m/Channel
+  "Verify the channel if the token is valid. Returns the updated channel or throws an auth exception"
+  [{:keys [db] :as res} token :- s/Str]
+  (let [{:keys [id user-id token-expiration verified-at] :as chan} (db/select-channel-by-token db token)
+        err (cond
+              (not token-expiration) token-invalid
+              (t/before? token-expiration (t/now)) token-expired)]
+
+    (when err
+      (throw (ex/validation err)))
+
+    (let [chan-data (cond-> {:token nil :token-expiration nil}
+                      (not verified-at) (assoc :verified-at (t/now)))]
+      (update-channel res id chan-data user-id))))
+
+(s/defn reset-password :- m/AuthResponse
+  "Resets the password for the user with the unexpired token."
+  [{:keys [db] :as res} token :- s/Str password :- s/Str]
+  (let [{:keys [id user-id token-expiration verified-at]} (db/select-channel-by-token db token)
+        err (cond
+              (not token-expiration) token-invalid
+              (t/before? token-expiration (t/now)) token-expired)]
+
+    (when err
+      (throw (ex/validation err)))
+
+    (jdbc/with-db-transaction [txn db]
+      (let [res (assoc res :db txn)
+            chan-data (cond-> {:token nil :token-expiration nil}
+                        (not verified-at) (assoc :verified-at (t/now)))]
+        (update-user res user-id {:password password} user-id)
+        (update-channel res id chan-data user-id)))
+
+    (user-id->auth-response res user-id)))
