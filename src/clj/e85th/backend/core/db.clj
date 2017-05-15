@@ -140,6 +140,22 @@
       (doseq [role-id roles]
         (sql/delete! txn :user-role ["user_id = ? and role_id = ?" user-id role-id])))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Roles
+(s/defn insert-role :- s/Int
+  "Inserts a role record and returns the id for the row."
+  [db role :- m/Role user-id]
+  (:id (sql/insert! db :role role user-id)))
+
+(s/defn update-role :- s/Int
+  "Updates a role record and returns the count updated."
+  [db role-id role :- m/UpdateRole user-id]
+  (sql/update! db :role (dissoc role :id) ["id = ?" role-id] user-id))
+
+(s/defn delete-role
+  [db id :- s/Int]
+  (first (sql/delete! db :role ["id = ?" id])))
+
 (def ^:private default-role-params
   {:id-nil? true :id nil
    :name-nil? true :name nil})
@@ -163,6 +179,22 @@
   [db]
   (select-role* db {}))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Permissions
+(s/defn insert-permission :- s/Int
+  "Inserts a permission record and returns the id for the row."
+  [db permission :- m/Permission user-id]
+  (:id (sql/insert! db :permission permission user-id)))
+
+(s/defn update-permission :- s/Int
+  "Updates a permission record and returns the count updated."
+  [db permission-id permission :- m/UpdatePermission user-id]
+  (sql/update! db :permission (dissoc permission :id) ["id = ?" permission-id] user-id))
+
+(s/defn delete-permission
+  [db id :- s/Int]
+  (first (sql/delete! db :permission ["id = ?" id])))
+
 (def ^:private default-permission-params
   {:id-nil? true :id nil
    :name-nil? true :name nil})
@@ -172,7 +204,11 @@
   (->> params
        (merge default-permission-params)
        (select-permission db)
-       (map #(update-in % [:name] keyword))))
+       (map #(update % :name keyword))))
+
+(s/defn select-all-permissions :- [m/Permission]
+  [db]
+  (select-permission* db {}))
 
 (s/defn select-permission-by-id :- (s/maybe m/Permission)
   [db permission-id :- s/Int]
@@ -182,6 +218,18 @@
   [db permission-name :- s/Str]
   (first (select-permission* db {:name-nil? false :name permission-name})))
 
+
+(s/defn select-permissions-by-role-ids :- [m/Permission]
+  [db role-ids :- [s/Int]]
+  (->> {:role-ids role-ids}
+       (select-permissions-by-roles db)
+       (map #(update % :name keyword))))
+
+(s/defn select-roles-by-permission-ids :- [m/Role]
+  [db permission-ids :- [s/Int]]
+  (->> {:permission-ids permission-ids}
+       (select-roles-by-permissions db)
+       (map #(update % :name keyword))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Address
@@ -219,3 +267,24 @@
   (assert (seq role-ids) "Must specify at least one role id.")
   (map :user-id
        (select-user-role* db [] role-ids)))
+
+(s/defn insert-role-permissions
+  [db role-id :- s/Int permissions :- #{s/Int} creator-id :- s/Int]
+  (let [xs (map #(hash-map :permission-id % :role-id role-id) permissions)]
+    (sql/insert-multi-with-create-audits! db :role-permission xs creator-id)))
+
+
+(s/defn delete-role-permissions-by-role-id
+  [db role-id]
+  (sql/delete! db :role-permission ["role_id = ?" role-id]))
+
+(s/defn delete-role-permissions-by-permission-id
+  [db permission-id]
+  (sql/delete! db :role-permission ["permission_id = ?" permission-id]))
+
+(s/defn delete-role-permissions
+  [db role-id :- s/Int permissions :- #{s/Int}]
+  (let [xs (map #(hash-map :permission-id % :role-id role-id) permissions)]
+    (jdbc/with-db-transaction [txn db]
+      (doseq [permission-id permissions]
+        (sql/delete! txn :role-permission ["role_id = ? and permission_id = ?" role-id permission-id])))))

@@ -65,6 +65,27 @@ union all
     where (:id-nil? or p.id = :id)
       and (:name-nil? or p.name = :name)
 
+-- :name select-permissions-by-roles
+   select
+          distinct
+          p.id
+        , p.name
+        , p.description
+     from permission p
+     join role_permission rp
+       on p.id = rp.permission_id
+    where rp.role_id in (:v*:role-ids)
+
+-- :name select-roles-by-permissions
+   select
+          r.id
+        , r.name
+        , r.description
+     from role r
+     join role_permission rp
+       on r.id = rp.role_id
+    where rp.permission_id in (:v*:permission-ids)
+
 -- :name select-address
    select
           a.id

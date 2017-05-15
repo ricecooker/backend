@@ -97,14 +97,27 @@
 
 
 (s/defschema Role
-  {:id s/Int
+  {(s/optional-key :id) s/Int
    :name s/Keyword
    :description s/Str})
 
+(s/defschema UpdateRole
+  (u/make-all-keys-optional Role))
+
+(s/defschema RoleWithPermissions
+  (assoc Role :permissions [s/Int]))
+
 (s/defschema Permission
-  {:id s/Int
+  {(s/optional-key :id) s/Int
    :name s/Keyword
    :description s/Str})
+
+(s/defschema UpdatePermission
+  (u/make-all-keys-optional Permission))
+
+(s/defschema RoleInfo
+  {:role Role
+   :permissions [Permission]})
 
 (s/defschema AuthRequest
   {:identifier s/Str

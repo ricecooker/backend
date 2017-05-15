@@ -93,7 +93,7 @@
   (db/update-channel db channel-id (m/normalize-identifier channel) user-id)
   (find-channel-by-id! res channel-id))
 
-(s/defn rm-channel
+(s/defn delete-channel
   [{:keys [db]} channel-id :- s/Int]
   (db/delete-channel db channel-id))
 
@@ -138,7 +138,7 @@
               (if (= new-identifier (:identifier ch)) :unchanged :changed)]
              [0 :new-blank _] [:no-action nil]
              [0 :new-some _] [:created (create-channel res (dissoc new-data :verified-at) modifier-user-id)]
-             [1 :new-blank _] [:removed (rm-channel res (:id ch))]
+             [1 :new-blank _] [:removed (delete-channel res (:id ch))]
              [1 :new-some :changed] [:updated (update-channel res (:id ch) new-data modifier-user-id)]
              [1 :new-some :unchanged] [:no-action ch]
              :else (throw (ex-info "Expected at most 1 channel." {:data new-data
@@ -313,11 +313,11 @@
   [{:keys [db]} user-id :- s/Int role-ids :- [s/Int] editor-user-id :- s/Int]
   (db/insert-user-roles db user-id (set role-ids) editor-user-id))
 
-(s/defn rm-user-roles
+(s/defn delete-user-roles
   [{:keys [db]} user-id :- s/Int role-ids :- [s/Int] editor-user-id :- s/Int]
   (db/delete-user-roles db user-id (set role-ids)))
 
-(s/defn rm-user
+(s/defn delete-user
   [{:keys [db]} user-id :- s/Int delete-user-id :- s/Int]
   (db/delete-user db user-id))
 
