@@ -262,11 +262,19 @@
                  (some? (seq user-ids)) (assoc :user-ids-nil? false))]
     (select-user-role db params)))
 
-(s/defn select-users-by-roles :- [s/Int]
+(s/defn select-user-ids-by-role-ids :- #{s/Int}
   [db role-ids :- [s/Int]]
   (assert (seq role-ids) "Must specify at least one role id.")
-  (map :user-id
-       (select-user-role* db [] role-ids)))
+  (->> (select-user-role* db [] role-ids)
+       (map :user-id)
+       set))
+
+(s/defn select-role-ids-by-user-ids :- #{s/Int}
+  [db user-ids :- [s/Int]]
+  (assert (seq user-ids) "Must specify at least one user id.")
+  (->> (select-user-role* db user-ids [])
+       (map :role-id)
+       set))
 
 (s/defn insert-role-permissions
   [db role-id :- s/Int permissions :- #{s/Int} creator-id :- s/Int]

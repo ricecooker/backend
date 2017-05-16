@@ -105,7 +105,7 @@
   (u/make-all-keys-optional Role))
 
 (s/defschema RoleWithPermissions
-  (assoc Role :permissions [s/Int]))
+  (assoc Role :permissions (s/either [s/Int] #{s/Int})))
 
 (s/defschema Permission
   {(s/optional-key :id) s/Int

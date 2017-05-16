@@ -91,7 +91,7 @@
 
 (defn validate-no-user-role
   [{:keys [db]} role-id]
-  (when (seq (db/select-users-by-roles db [role-id]))
+  (when (seq (db/select-user-ids-by-role-ids db [role-id]))
     (throw (ex/validation role-associated-with-users))))
 
 (s/defn delete-role
@@ -151,3 +151,12 @@
   (if (:id role)
     (update-role-with-permissions res role user-id)
     (create-role-with-permissions res role user-id)))
+
+(s/defn find-role-ids-by-user-id :- #{s/Int}
+  [{:keys [db] :as res} user-id]
+  (db/select-role-ids-by-user-ids db [user-id]))
+
+(s/defn find-roles-by-user-id :- [m/Role]
+  [res user-id]
+  (map (partial find-role-by-id! res)
+       (find-role-ids-by-user-id res user-id)))

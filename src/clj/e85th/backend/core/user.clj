@@ -244,9 +244,9 @@
 
 (def find-roles-by-user-id find-user-roles)
 
-(s/defn find-user-ids-by-role-ids :- [s/Int]
-  [{:keys [db]} role-ids :- [s/Int]]
-  (db/select-users-by-roles db role-ids))
+(s/defn find-user-ids-by-role-id :- #{s/Int}
+  [{:keys [db]} role-id :- s/Int]
+  (db/select-user-ids-by-role-ids db [role-id]))
 
 
 (s/defn send-mobile-token :- s/Bool
@@ -310,11 +310,11 @@
       (assoc :roles (find-user-roles res user-id))))
 
 (s/defn add-user-roles
-  [{:keys [db]} user-id :- s/Int role-ids :- [s/Int] editor-user-id :- s/Int]
+  [{:keys [db]} user-id :- s/Int role-ids :- (s/either [s/Int] #{s/Int}) editor-user-id :- s/Int]
   (db/insert-user-roles db user-id (set role-ids) editor-user-id))
 
 (s/defn delete-user-roles
-  [{:keys [db]} user-id :- s/Int role-ids :- [s/Int] editor-user-id :- s/Int]
+  [{:keys [db]} user-id :- s/Int role-ids :- (s/either [s/Int] #{s/Int}) editor-user-id :- s/Int]
   (db/delete-user-roles db user-id (set role-ids)))
 
 (s/defn delete-user
@@ -417,3 +417,19 @@
         (update-channel res id chan-data user-id)))
 
     (user-id->auth-response res user-id)))
+
+
+(s/defn set-roles
+  [{:keys [db] :as res} user-id :- s/Int roles :- (s/either [s/Int] #{s/Int}) modifier-user-id]
+  (let [roles (set roles)
+        cur-roles (db/select-role-ids-by-user-ids db [user-id])
+        rm-roles (set/difference cur-roles roles)
+        add-roles (set/difference roles cur-roles)]
+
+    (log/infof "roles: %s, cur-roles: %s, rm-roles: %s, add-roles: %s" roles cur-roles rm-roles add-roles)
+    (jdbc/with-db-transaction [txn db]
+      (let [res (assoc res :db txn)]
+        (when (seq rm-roles)
+          (delete-user-roles res user-id rm-roles modifier-user-id))
+        (when (seq add-roles)
+          (add-user-roles res user-id add-roles modifier-user-id))))))
