@@ -86,6 +86,9 @@
        (catch e85th.commons.exceptions.AuthExceptionInfo ex
          (log/infof "%s %s 401" request-method uri)
          (http-response/unauthorized {:errors [(ex/error-tuple ex)]}))
+       (catch e85th.commons.exceptions.ForbiddenExceptionInfo ex
+         (log/infof "%s %s 403" request-method uri)
+         (http-response/forbidden {:errors [(ex/error-tuple ex)]}))
        (catch clojure.lang.ExceptionInfo ex
          (log/debug ex)
          (let [{:keys [type error] :as data} (ex-data ex) ;; compojure api exceptions
@@ -127,6 +130,9 @@
         resp)
       (catch e85th.commons.exceptions.AuthExceptionInfo ex
         (log/infof "%s %s 401" request-method uri)
+        (http-response/see-other login-page))
+      (catch e85th.commons.exceptions.ForbiddenExceptionInfo ex
+        (log/infof "%s %s 403" request-method uri)
         (http-response/see-other login-page))
       (catch clojure.lang.ExceptionInfo ex
         (log/debug ex)
