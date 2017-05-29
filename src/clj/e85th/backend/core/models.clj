@@ -59,7 +59,7 @@
 (s/defschema Address
   {(s/optional-key :id) s/Int
    :street-1 (s/maybe s/Str)
-   :street-2 (s/maybe s/Str)
+   (s/optional-key :street-2) (s/maybe s/Str)
    :city s/Str
    :state s/Str
    :postal-code (s/maybe s/Str)
