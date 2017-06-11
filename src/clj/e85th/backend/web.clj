@@ -1,7 +1,6 @@
 (ns e85th.backend.web
   (:require [ring.util.http-response :as http-response]
             [compojure.api.meta :as meta]
-            ;[compojure.api.sweet :refer [defapi defroutes context GET POST ANY]]
             [e85th.commons.util :as u]
             [e85th.commons.ex :as ex]
             [ring.swagger.json-schema :as json-schema]
@@ -115,6 +114,21 @@
                          (if authorized?#
                            (do ~@body)
                            (http-response/forbidden {:errors [(ex/error-tuple :http/forbidden msg# {})]}))))))))
+
+(defmulti log-endpoint-access :log-type)
+(defmethod meta/restructure-param :log restructure-log
+  [_ [action data-munge-fn log-type] {:keys [body] :as acc}]
+  (assert action "an action must be specified.")
+  (assert (keyword? action) "action must be a keyword.")
+  (let [data-munge-fn (or data-munge-fn identity)
+        params {:log-type (or log-type :standard)
+                :action action
+                :data-munge-fn data-munge-fn
+                :request '+compojure-api-request+}]
+    (-> acc
+        (assoc :body `((do
+                         (log-endpoint-access ~params)
+                         ~@body))))))
 
 
 (comment
