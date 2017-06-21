@@ -40,6 +40,5 @@
                              :repl-options {:init-ns user}
                              :env {:port "7000"}}
              :project/test  {}}
-
-  :deploy-repositories [["releases" :clojars]
-                        ["snapshots" :clojars]])
+  :deploy-repositories [["releases"  {:sign-releases false :url "https://clojars.org/repo"}]
+                        ["snapshots" {:sign-releases false :url "https://clojars.org/repo"}]])
