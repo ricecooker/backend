@@ -1,4 +1,4 @@
-(defproject e85th/backend "0.1.30"
+(defproject e85th/backend "0.1.31"
   :description "Backend server code."
   :url "https://github.com/e85th/backend"
   :license {:name "Apache License 2.0"
@@ -15,9 +15,9 @@
                  [org.immutant/web "2.1.5" :exclusions [ring/ring-core]]
                  [http-kit "2.2.0"]
                  [buddy "1.0.0"]
-                 [com.google.api-client/google-api-client "1.22.0"]
-                 [com.google.firebase/firebase-server-sdk "3.0.1"]
-                 [org.clojure/tools.nrepl "0.2.12"]]
+                 [com.google.api-client/google-api-client "1.22.0" :scope "provided"]
+                 [com.google.firebase/firebase-server-sdk "3.0.1" :scope "provided"]
+                 [org.clojure/tools.nrepl "0.2.12" :scope "provided"]]
 
 
   :source-paths ["src/clj"]
