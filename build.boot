@@ -58,7 +58,7 @@
 
 (task-options!
  pom {:project 'e85th/backend
-      :version "0.1.33"
+      :version "0.1.34"
       :description "Backend server code."
       :url "https://github.com/e85th/backend"
       :scm {:url "https://github.com/e85th/backend"}

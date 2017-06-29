@@ -15,18 +15,12 @@
             [compojure.api.middleware :as compojure-api-mw])
   (:import [e85th.commons.exceptions InvalidDataException NotFoundException]))
 
-(def coercion-matchers
-  (merge compojure.api.middleware/default-coercion-matchers
-         {:body u/schema-string-coercion-matcher
-          :string u/schema-string-coercion-matcher}))
-
 (defn error-actions
   "Logs errors, notify via airbrake if airbrake-key is present and returns a 500 response. "
   [^Throwable t data request]
   (let [uuid (u/uuid)]
     (u/log-throwable t uuid)
     (http-response/internal-server-error {:error (str "Unexpected server error. " uuid)})))
-
 
 (defn wrap-log-request
   [f context-str]
