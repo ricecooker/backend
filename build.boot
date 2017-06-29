@@ -2,7 +2,7 @@
  :resource-paths #{"src/clj" "resources"}
  :dependencies '[[org.clojure/clojure "1.9.0-alpha15" :scope "provided"]
                  [org.clojure/core.match "0.3.0-alpha4"]
-                 [e85th/commons "0.1.23"]
+                 [e85th/commons "0.1.24"]
                  [com.taoensso/timbre "4.10.0"] ; explicitly include
                  [org.clojure/core.async "0.3.443"] ;; override sente version for spec ns
                  [com.taoensso/sente "1.11.0"] ; websockets
