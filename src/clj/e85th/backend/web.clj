@@ -44,7 +44,7 @@
   "Answers with a request that is free of extraneus keys."
   [request]
   ;; identity is something buddy-auth uses, :server-exchange is undertow
-  (dissoc request :identity :server-exchange :async-channel :compojure.api.middleware/components :compojure.api.middleware/options :ring.swagger.middleware/data))
+  (dissoc request :identity :server-exchange :async-channel :compojure.api.middleware/components :compojure.api.middleware/options :ring.swagger.middleware/data :compojure.api.request/swagger :compojure.api.request/paths :compojure.api.request/coercion :compojure.api.request/lookup))
 
 (s/defn cookie-value :- (s/maybe s/Str)
   "Extracts the cookie's value otherwise returns nil"
