@@ -34,7 +34,7 @@
              :project/dev   {:dependencies [[reloaded.repl "0.2.3"]
                                             [org.clojure/tools.namespace "0.2.11"]
                                             [org.clojure/tools.nrepl "0.2.13"]
-                                            [e85th/test "0.1.6"]]
+                                            [e85th/test "0.1.7"]]
                              :source-paths   ["dev/src"]
                              :resource-paths ["dev/resources"]
                              :repl-options {:init-ns user}
