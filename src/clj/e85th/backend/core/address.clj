@@ -2,7 +2,6 @@
   (:require [e85th.backend.core.db :as db]
             [e85th.backend.core.models :as m]
             [e85th.commons.ex :as ex]
-            [e85th.commons.util :as u]
             [taoensso.timbre :as log]
             [clojure.java.jdbc :as jdbc]
             [schema.core :as s]

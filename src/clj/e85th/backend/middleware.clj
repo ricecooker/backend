@@ -12,13 +12,14 @@
             [e85th.backend.web :as web]
             [e85th.commons.util :as u]
             [e85th.commons.ex :as ex]
+            [e85th.commons.ext :as ext]
             [compojure.api.middleware :as compojure-api-mw])
   (:import [e85th.commons.exceptions InvalidDataException NotFoundException]))
 
 (defn error-actions
   "Logs errors, notify via airbrake if airbrake-key is present and returns a 500 response. "
   [^Throwable t data request]
-  (let [uuid (u/uuid)]
+  (let [uuid (ext/random-uuid)]
     (u/log-throwable t uuid)
     (http-response/internal-server-error {:error (str "Unexpected server error. " uuid)})))
 
@@ -104,7 +105,7 @@
                (on-ex-fn req ex)
                (throw ex)))))
        (catch Exception ex
-         (let [uuid (u/uuid)
+         (let [uuid (ext/random-uuid)
                error-tuple (ex/error-tuple :http/internal-server-error (str "Unexpected server error. " uuid) {:uuid uuid})]
            (u/log-throwable ex uuid)
            (log/errorf "req %s, message: %s" (web/raw-request req) (.getMessage ex))
@@ -148,7 +149,7 @@
               (error-page-fn req ex)
               (throw ex)))))
       (catch Exception ex
-        (let [uuid (u/uuid)]
+        (let [uuid (ext/random-uuid)]
           (u/log-throwable ex uuid)
           (log/errorf "req %s, message: %s" (web/raw-request req) (.getMessage ex))
                                         ;(http-response/internal-server-error {:errors [(str "Unexpected server error. " uuid)]})

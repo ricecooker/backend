@@ -1,4 +1,4 @@
-(ns e85th.backend.core.google-oauth
+(ns e85th.backend.libs.google-oauth
   "Google OAuth."
   (:require [schema.core :as s]
             [clojure.set :as set])

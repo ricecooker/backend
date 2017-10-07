@@ -1,4 +1,4 @@
-(ns e85th.backend.core.firebase
+(ns e85th.backend.libs.firebase
   "Firebase integration for auth. Must call init! before using other functions."
   (:require [schema.core :as s]
             [clojure.core.match :refer [match]]

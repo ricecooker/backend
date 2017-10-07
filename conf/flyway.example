@@ -1,0 +1,11 @@
+flyway.placeholders.roles.primary=app-role
+flyway.placeholders.users.superuser.name=superuser
+flyway.placeholders.users.readonly.pass=my-readonly-pass
+flyway.placeholders.users.app.name=my-app
+flyway.placeholders.users.app.pass=my-app-pass
+flyway.placeholders.database.name=mydatabase
+flyway.url=jdbc:postgresql://127.0.0.1:5432/mydatabase
+flyway.user=superuser
+flyway.password=superuser-pass
+flyway.locations=filesystem:./db/postgres/migrations
+flyway.cleanDisabled=false

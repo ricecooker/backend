@@ -6,9 +6,12 @@ Currently provides only the basics for a backend server.  Basics include:
     * Log events
 
 ## Installation
-
-    * Run ```db/ddl.sql```
-    * Run ```db/seed.sql```
+* Install flyway.
+* Create a flyway file similar to conf/flyway.example
+* Run flyway eg:
+  ```sh
+  flyway -configFile=./conf/flyway.example migrate
+  ```
 
 ## Usage
 

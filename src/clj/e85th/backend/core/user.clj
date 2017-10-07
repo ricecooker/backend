@@ -5,11 +5,9 @@
             [e85th.commons.sms :as sms]
             [e85th.commons.tel :as tel]
             [e85th.commons.ex :as ex]
-            [e85th.commons.util :as u]
+            [e85th.commons.ext :as ext]
             [taoensso.timbre :as log]
             [buddy.hashers :as hashers]
-            [e85th.backend.core.firebase :as firebase]
-            [e85th.backend.core.google-oauth :as google-oauth]
             [clj-time.core :as t]
             [clojure.java.jdbc :as jdbc]
             [clojure.set :as set]
@@ -54,7 +52,7 @@
    (db/select-channels-by-user-id db user-id))
   ([res user-id :- s/Int ch-type-id :- s/Int]
    (->> (find-channels-by-user-id res user-id)
-        (filter (u/key= :channel-type-id ch-type-id)))))
+        (filter (ext/key= :channel-type-id ch-type-id)))))
 
 (s/defn find-channels-by-identifier :- [m/Channel]
   "Enumerate all channels matching the identifier."
@@ -234,7 +232,7 @@
   (let [rename-map {"role" :roles "permission" :permissions}
         xs (seq (db/select-user-auth-by-user-id db user-id))]
     (merge {:roles #{} :permissions #{}}
-           (set/rename-keys (u/group-by+ :kind (comp keyword :name) set xs)
+           (set/rename-keys (ext/group-by+ :kind (comp keyword :name) set xs)
                             rename-map))))
 
 (s/defn find-user-roles :- #{s/Keyword}
@@ -277,7 +275,7 @@
   (assert token-factory)
   (token/token->data! token-factory token))
 
-(s/defn ^:private auth-with-token :- s/Int
+(s/defn auth-with-token :- s/Int
   "Check the identifier and token combination is not yet expired. Answers with the user-id.
    Throws exceptions if unexpired identifier and token combo is not found."
   [{:keys [db] :as res} identifier :- s/Str token :- s/Str]
@@ -328,36 +326,6 @@
   (fn [res user-auth]
     (first (keys user-auth))))
 
-(defmethod authenticate :with-firebase
-  [res {:keys [with-firebase]}]
-  (let [jwt (:token with-firebase)
-        auth-ex-fn (fn [ex]
-                     (throw
-                      (ex/auth :firebase/auth-failed "Firebase Auth Failed" {} ex)))
-        {:keys [email]} (firebase/verify-id-token! jwt auth-ex-fn)]
-
-    (assert email "We don't handle anonymous logins a la firebase.")
-
-    (if-let [{:keys [user-id]} (find-email-channel res email)]
-      (user-id->auth-response res user-id)
-      (throw (ex/auth :user/no-such-user "No such user.")))))
-
-(defmethod authenticate :with-google
-  [res {:keys [with-google]}]
-  (let [jwt (:token with-google)
-        auth-ex-fn (fn [ex]
-                     (throw
-                      (ex/auth :google/auth-failed "Google Auth Failed" {} ex)))
-        {:keys [email]} (google-oauth/verify-token jwt)]
-    (try
-      (let [{:keys [email]} (google-oauth/verify-token jwt)]
-        (assert email "We don't handle anonymous logins.")
-        (if-let [{:keys [user-id]} (find-email-channel res email)]
-          (user-id->auth-response res user-id)
-          (throw (ex/auth :user/no-such-user "No such user."))))
-      (catch Exception ex
-        (throw
-         (ex/auth :google/auth-failed "Google Auth Failed" {} ex))))))
 
 (defmethod authenticate :with-token
   [res {:keys [with-token]}]

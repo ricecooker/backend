@@ -1,8 +1,8 @@
 (ns e85th.backend.web
   (:require [ring.util.http-response :as http-response]
             [compojure.api.meta :as meta]
-            [e85th.commons.util :as u]
             [e85th.commons.ex :as ex]
+            [e85th.commons.ext :as ext]
             [ring.swagger.json-schema :as json-schema]
             [e85th.commons.geo] ; to load LatLng
             [schema.core :as s]))
@@ -77,7 +77,7 @@
   (-> acc
       (assoc :body `((let [errors# ~validate-expr]
                        (if (seq errors#)
-                         (http-response/unprocessable-entity {:errors (u/as-coll errors#)})
+                         (http-response/unprocessable-entity {:errors (ext/as-coll errors#)})
                          (do ~@body)))))))
 
 
