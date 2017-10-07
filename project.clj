@@ -1,4 +1,4 @@
-(defproject e85th/backend "0.1.36-alpha1"
+(defproject e85th/backend "0.1.37"
   :description "Backend server code."
   :url "https://github.com/e85th/backend"
   :license {:name "Apache License 2.0"
