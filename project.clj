@@ -3,11 +3,12 @@
   :url "https://github.com/e85th/backend"
   :license {:name "Apache License 2.0"
             :url "http://www.apache.org/licenses/LICENSE-2.0"}
-  :dependencies [[org.clojure/clojure "1.9.0-beta1" :scope "provided"]
+  :dependencies [[org.clojure/clojure "1.9.0-beta3" :scope "provided"]
                  [org.clojure/core.match "0.3.0-alpha4"]
-                 [e85th/commons "0.1.26-alpha1"]
+                 [e85th/commons "0.1.27"]
                  [com.taoensso/timbre "4.10.0"] ; explicitly include
                  [org.clojure/core.async "0.3.443"] ;; override sente version for spec ns
+                 [com.walmartlabs/lacinia "0.22.1" :exclusions [org.clojure/clojure]]
                  [com.taoensso/sente "1.11.0"] ; websockets
                  [com.layerware/hugsql "0.4.7"]
                  [metosin/compojure-api "2.0.0-alpha7"]
