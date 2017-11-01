@@ -1,61 +1,36 @@
 (ns e85th.backend.components
   (:require [com.stuartsierra.component :as component]
-            [e85th.commons.components :as commons-comp]
-            [immutant.web :as immutant]
-            [org.httpkit.server :as http-kit]
+            [clojure.spec.alpha :as s]
+            [io.pedestal.http :as http]
             [clojure.tools.nrepl.server :as nrepl]
-            [taoensso.timbre :as log]
-            [schema.core :as s])
-  (:import [clojure.lang IFn]))
+            [taoensso.timbre :as log]))
 
 
-(defrecord ImmutantWebServer [server-opts make-handler app]
+(s/def ::port nat-int?)
+(s/def ::host string?)
+(s/def ::bind string?)
+
+(s/def ::repl-server-opts (s/keys :req-un [::port]
+                                  :opt-un [::bind]))
+
+(defrecord Pedestal [service-map]
   component/Lifecycle
   (start [this]
-    (log/infof "Starting Immutant Web Server")
-    (assert app "The app dependency has not been set. Does your system have :app?")
-    (assoc this :server (immutant/run (make-handler app) server-opts)))
-
+    ;(log/debug "Starting Pedestal Service.")
+    (if (:service this)
+      this
+      (assoc this :service
+             (-> service-map
+                 http/create-server
+                 http/start))))
   (stop [this]
-    (log/infof "Stopping Immutant Web Server.")
-    (some-> this :server immutant/stop)
-    this))
+    ;(log/debug "Stopping Pedestal Service.")
+    (some-> this :service http/stop)
+    (dissoc this :service)))
 
-(defrecord HttpKitWebServer [server-opts make-handler app]
-  component/Lifecycle
-  (start [this]
-    (log/infof "Starting HttpKit Web Server")
-    (assert app "The app dependency has not been set. Does your system have :app?")
-    (assoc this :server (http-kit/run-server (make-handler app) server-opts)))
-
-  (stop [this]
-    (log/infof "Stopping HttpKit Web Server.")
-    (when-let [server (:server this)]
-      (server))
-    this))
-
-
-(s/defschema WebServerOpts
-  {:port s/Int
-   (s/optional-key :host) s/Str})
-
-(s/defn new-immutant-server
-  "Creates a new web server instance.  make-handler-fn is a 1 arity function which
-   is invoked to create the ring handler function, and is passed the app dependency."
-  [server-opts :- WebServerOpts make-handler :- IFn]
-  (let [params {:server-opts (merge {:host "0.0.0.0"} server-opts)
-                :make-handler make-handler}]
-    (component/using (map->ImmutantWebServer params) [:app])))
-
-(s/defn new-http-kit-server
-  "Creates a new web server instance.  make-handler-fn is a 1 arity function which
-   is invoked to create the ring handler function, and is passed the app dependency."
-  [server-opts :- WebServerOpts make-handler :- IFn]
-  (let [params {:server-opts (merge {:host "0.0.0.0"} server-opts)
-                :make-handler make-handler}]
-    (component/using (map->HttpKitWebServer params) [:app])))
-
-
+(defn new-pedestal
+  [service-map]
+  (map->Pedestal {:service-map service-map}))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; nRepl server
@@ -64,23 +39,24 @@
   (start [this]
     (if (and bind port)
       (do
-        (log/infof "Starting nRepl server on %s:%s" bind port)
+        ;(log/debugf "Starting nRepl server on %s:%s" bind port)
         (assoc this :server (nrepl/start-server :bind bind :port port)))
       (do
-        (log/info "Skipping nRepl server initialization.  Both bind and port must be specified.")
+        ;(log/debugf "Skipping nRepl server initialization.  Both bind and port must be specified.")
         this)))
 
   (stop [this]
-    (log/infof "Stopping nRepl server.")
+    ;(log/debug "Stopping nRepl server.")
     (some-> this :server nrepl/stop-server)
     (assoc this :server nil)))
 
-(s/defschema ReplServerOpts
-  {:port s/Int
-   (s/optional-key :bind) s/Str})
+;;----------------------------------------------------------------------
+(s/fdef new-repl-server
+        :args (s/cat :repl-opts ::repl-server-opts)
+        :ret any?)
 
-(s/defn new-repl-server
+(defn new-repl-server
   "Create a new nrepl server running on host and port"
-  [repl-opts :- ReplServerOpts]
+  [repl-opts]
   (let [params (merge {:bind "0.0.0.0"} repl-opts)]
     (map->ReplServer params)))

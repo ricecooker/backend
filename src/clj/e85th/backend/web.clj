@@ -1,41 +1,52 @@
 (ns e85th.backend.web
-  (:require [ring.util.http-response :as http-response]
-            [compojure.api.meta :as meta]
-            [e85th.commons.ex :as ex]
+  (:require [e85th.commons.ex :as ex]
             [e85th.commons.ext :as ext]
-            [ring.swagger.json-schema :as json-schema]
-            [e85th.commons.geo] ; to load LatLng
-            [schema.core :as s]))
+            [ring.util.response :as response]))
 
-(defmethod json-schema/convert-class e85th.commons.geo.LatLng [_ _] {:type "map"})
+(defn ok
+  "200 OK (Success)
+  OK"
+  ([] (ok nil))
+  ([body]
+   {:status 200
+    :headers {}
+    :body body}))
+
+(defn found
+  "302 Found (Redirection)
+  The resource was found but at a different URI."
+  ([url]
+   {:status 302
+    :headers {"Location" url}
+    :body ""}))
 
 (defn text-response
   "Returns a ring response with content-type set to text/plain."
   [body]
   (-> body
-      http-response/ok
-      (http-response/content-type "text/plain")))
+      ok
+      (response/content-type "text/plain")))
 
 (defn html-response
   "Returns a ring response with content-type set to text/html."
   [body]
   (-> body
-      http-response/ok
-      (http-response/content-type "text/html")))
+      ok
+      (response/content-type "text/html")))
 
-(s/defn user-agent :- s/Str
+(defn user-agent
   "Answers with the user-agent otherwise returns unk or optionally specify not-found."
   ([request]
    (user-agent "unk"))
   ([request not-found]
    (get-in request [:headers "user-agent"] not-found)))
 
-(s/defn request-host :- s/Str
+(defn request-host
   "Answers with the user-agent otherwise returns unk or optionally specify not-found."
   [request]
   (get-in request [:headers "host"]))
 
-(s/defn request-server-name :- s/Str
+(defn request-server-name
   "Answers with the user-agent otherwise returns unk or optionally specify not-found."
   [request]
   (get-in request [:server-name]))
@@ -44,106 +55,16 @@
   "Answers with a request that is free of extraneus keys."
   [request]
   ;; identity is something buddy-auth uses, :server-exchange is undertow
-  (dissoc request :identity :server-exchange :async-channel :compojure.api.middleware/components :compojure.api.middleware/options :ring.swagger.middleware/data :compojure.api.request/swagger :compojure.api.request/paths :compojure.api.request/coercion :compojure.api.request/lookup))
+  (dissoc request :identity :server-exchange :async-channel))
 
-(s/defn cookie-value :- (s/maybe s/Str)
+(defn cookie-value
   "Extracts the cookie's value otherwise returns nil"
   [request cookie-name]
   (get-in request [:cookies (name cookie-name) :value]))
 
-(s/defn set-cookie
+(defn set-cookie
   "Handles dissocing domain and secure when domain is localhost."
   [response cookie-name cookie-value {:keys [domain] :as opts}]
   (let [opts (cond-> opts
                (= domain "localhost") (dissoc opts :domain :secure))]
-    (apply http-response/set-cookie [response cookie-name cookie-value opts])))
-
-;; See https://github.com/metosin/compojure-api/wiki/Creating-your-own-metadata-handlers
-(defmethod meta/restructure-param :exists restructure-exists
-  [_ [item expr error-msg] {:keys [body] :as acc}]
-  (assert (symbol? item) "Please specify a symbol to bind the expression to for :exists.")
-  (assert expr "Please specify an expression for :exists")
-  (let [errors [(ex/error-tuple :http/not-found (or error-msg "Resource not found.") {})]]
-    (-> acc
-        (update-in [:letks] into [item expr])
-        (assoc :body `((if ~item
-                         (do ~@body)
-                         (http-response/not-found {:errors ~errors})))))))
-
-
-;; validate-expr should return ex/error-tuple(s)
-(defmethod meta/restructure-param :validate restructure-validate
-  [_ validate-expr {:keys [body] :as acc}]
-  (-> acc
-      (assoc :body `((let [errors# ~validate-expr]
-                       (if (seq errors#)
-                         (http-response/unprocessable-entity {:errors (ext/as-coll errors#)})
-                         (do ~@body)))))))
-
-
-(defn wrap-authenticated
-  "This is a ring middleware handler."
-  [handler]
-  (fn [request]
-    (if (:identity request)
-      (handler request)
-      (http-response/unauthorized {:errors [(ex/error-tuple :http/unauthorized "Not authenticated." {})]}))))
-
-;; Implementations must return a variant [authorized? msg]
-(defmulti authorized? :auth-type)
-
-;; allow permission and auth-fn to be nil
-;; sometimes you don't care about permission, just that the user is logged in
-(defmethod meta/restructure-param :auth restructure-auth
-  [_ [user permission-or-auth-fn auth-fn] {:keys [body] :as acc}]
-  (assert user "no user specified for :auth restructuring")
-  (let [perm-or-auth? (some? permission-or-auth-fn)
-        perm? (keyword? permission-or-auth-fn)
-        auth-fn? (some? auth-fn)
-        auth-params {:auth-type :standard
-                     :user user
-                     :required-permission (when perm? permission-or-auth-fn)
-                     :auth-fn (if perm? auth-fn permission-or-auth-fn)
-                     :request '+compojure-api-request+}]
-    (when auth-fn?
-      (assert perm-or-auth? "No permission specified as 2nd arg in :auth restructuring."))
-    (-> acc
-        (update-in [:middleware] conj wrap-authenticated)
-        (update-in [:lets] into [user '(:identity +compojure-api-request+)])
-        (assoc :body `((let [[authorized?# msg#] (authorized? ~auth-params)]
-                         (if authorized?#
-                           (do ~@body)
-                           (http-response/forbidden {:errors [(ex/error-tuple :http/forbidden msg# {})]}))))))))
-
-(defmulti log-endpoint-access :log-type)
-(defmethod meta/restructure-param :log restructure-log
-  [_ [action data-munge-fn log-type] {:keys [body] :as acc}]
-  (assert action "an action must be specified.")
-  (assert (keyword? action) "action must be a keyword.")
-  (let [data-munge-fn (or data-munge-fn identity)
-        params {:log-type (or log-type :standard)
-                :action action
-                :data-munge-fn data-munge-fn
-                :request '+compojure-api-request+}]
-    (-> acc
-        (assoc :body `((do
-                         (log-endpoint-access ~params)
-                         ~@body))))))
-
-
-(comment
-  (macroexpand-1
-   `(GET "/admin" []
-      (ok {:message "welcome!"})))
-
-  (macroexpand-1
-   `(GET "/admin" []
-      :auth [foo-user jf]
-      (ok {:message "welcome!"})))
-
-  (macroexpand-1
-   `(defn do-something
-      [arg-1]
-      (let [let-1 20]
-        (* arg-1 let-1))))
-  )
+    (response/set-cookie response cookie-name cookie-value opts)))

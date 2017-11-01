@@ -1,187 +1,68 @@
 (ns e85th.backend.core.user
   (:require [e85th.backend.core.db :as db]
-            [e85th.backend.core.models :as m]
             [e85th.backend.core.address :as address]
+            [e85th.backend.core.domain :as domain]
+            [e85th.backend.core.channel :as channel]
             [e85th.commons.sms :as sms]
             [e85th.commons.tel :as tel]
             [e85th.commons.ex :as ex]
             [e85th.commons.ext :as ext]
+            [e85th.commons.sql :as sql]
             [taoensso.timbre :as log]
             [buddy.hashers :as hashers]
             [clj-time.core :as t]
+            [clojure.spec.alpha :as s]
             [clojure.java.jdbc :as jdbc]
             [clojure.set :as set]
-            [schema.core :as s]
             [clojure.core.match :refer [match]]
             [e85th.commons.token :as token]
             [e85th.commons.email :as email]
             [clojure.string :as str]))
 
-(def duplicate-channel-ex ::duplicate-channel-ex)
-(def password-required-ex ::password-required-ex)
-(def channel-auth-failed-ex ::channel-auth-failed-ex)
-(def channel-verification-failed-ex ::channel-verification-failed-ex)
-(def channel-in-use ::channel-in-use)
-(def token-expired ::token-expired)
-(def token-invalid ::token-invalid)
+;(remove-ns (ns-name *ns*))
 
-(s/defn find-user-all-fields-by-id :- (s/maybe m/UserAllFields)
+(def ^:const password-required-err :user.error/password-required)
+(def ^:const channel-verification-failed-err :user.error/channel-verification-failed)
+
+
+;;----------------------------------------------------------------------
+(s/fdef get-all-fields-by-id
+        :args (s/cat :res map? :id ::domain/id)
+        :ret  (s/nilable ::domain/user))
+
+(defn get-all-fields-by-id
+  [{:keys [db]} id]
+  (db/select-user-by-id db id))
+
+(def get-all-fields-by-id! (ex/wrap-not-found get-all-fields-by-id))
+
+
+;;----------------------------------------------------------------------
+(s/fdef get-by-id
+        :args (s/cat :res map? :id ::domain/id)
+        :ret  (s/nilable ::domain/user))
+
+(defn get-by-id
   "This exists to make it a little bit harder to expose the password digest."
-  [{:keys [db]} id :- s/Int]
-  (db/select-user db {:id id}))
-
-(def find-user-all-fields-by-id! (ex/wrap-not-found find-user-all-fields-by-id))
-
-(s/defn find-user-by-id :- (s/maybe m/User)
-  "This exists to make it a little bit harder to expose the password digest."
-  [res id :- s/Int]
-  (some-> (find-user-all-fields-by-id res id)
+  [res id]
+  (some-> (get-all-fields-by-id res id)
           (dissoc :password-digest)))
 
-(def find-user-by-id! (ex/wrap-not-found find-user-by-id))
+(def get-by-id! (ex/wrap-not-found get-by-id))
 
-(s/defn find-channel-by-id :- (s/maybe m/Channel)
-  [{:keys [db]} id :- s/Int]
-  (db/select-channel-by-id db id))
+;;----------------------------------------------------------------------
+(s/fdef validate-new-user
+        :args (s/cat :res map? :new-user ::domain/new-user)
+        :ret nil?)
 
-(def find-channel-by-id! (ex/wrap-not-found find-channel-by-id))
-
-(s/defn find-channels-by-user-id :- [m/Channel]
-  "Enumerates all channels by the user-id."
-  ([{:keys [db]} user-id :- s/Int]
-   (db/select-channels-by-user-id db user-id))
-  ([res user-id :- s/Int ch-type-id :- s/Int]
-   (->> (find-channels-by-user-id res user-id)
-        (filter (ext/key= :channel-type-id ch-type-id)))))
-
-(s/defn find-channels-by-identifier :- [m/Channel]
-  "Enumerate all channels matching the identifier."
-  [{:keys [db]} identifier :- s/Str]
-  (db/select-channels-by-identifier db identifier))
-
-(s/defn find-channel-by-type :- (s/maybe m/Channel)
-  [{:keys [db]} channel-type-id :- s/Int identifier :- s/Str]
-  (db/select-channel-by-type db channel-type-id identifier))
-
-(def find-channel-by-type! (ex/wrap-not-found find-channel-by-type))
-
-(s/defn find-mobile-channel :- (s/maybe m/Channel)
-  "Finds an mobile channel for the given mobile phone number."
-  [res mobile-nbr :- s/Str]
-  (find-channel-by-type res m/mobile-channel-type-id (tel/normalize mobile-nbr)))
-
-(def find-mobile-channel! (ex/wrap-not-found find-mobile-channel))
-
-(s/defn find-email-channel :- (s/maybe m/Channel)
-  "Finds an email channel for the given email address."
-  [res email :- s/Str]
-  (find-channel-by-type res m/email-channel-type-id (email/normalize email)))
-
-(def find-email-channel! (ex/wrap-not-found find-email-channel))
-
-(s/defn create-channel :- m/Channel
-  "Creates a new channel and returns the Channel record."
-  [{:keys [db] :as res} channel :- m/NewChannel user-id :- s/Int]
-  (->> (db/insert-channel db (m/normalize-identifier channel) user-id)
-       (find-channel-by-id res)))
-
-(s/defn update-channel :- m/Channel
-  "Update the channel attributes and return the updated Channel record."
-  [{:keys [db] :as res} channel-id :- s/Int channel :- m/UpdateChannel user-id :- s/Int]
-  (db/update-channel db channel-id (m/normalize-identifier channel) user-id)
-  (find-channel-by-id! res channel-id))
-
-(s/defn delete-channel
-  [{:keys [db]} channel-id :- s/Int]
-  (db/delete-channel db channel-id))
-
-(s/defn ensure-channel
-  "Ensures the channel exists for the user. Returns a variant [status ch]
-   Status can be :ok if already exists,
-   or ::channel-in-use if the channel already belongs to another user
-   or :created when the new channel is created."
-  [res
-   {:keys [channel-type-id identifier user-id] :as new-chan} :- m/NewChannel
-   modifier-user-id :- s/Int]
-  (if-let [ch (find-channel-by-type res channel-type-id identifier)]
-    (if (= user-id (:user-id ch))
-      [:ok ch]
-      [channel-in-use ch])
-    [:created (create-channel res new-chan modifier-user-id)]))
-
-(defn channel-used-by-another?
-  "Answers if channel is being used by another user."
-  [res channel-type-id identifier user-id]
-  (if-let [ch (find-channel-by-type res channel-type-id identifier)]
-    (not= (:user-id ch) user-id)
-    false))
-
-(defn persist-channel
-  "Either a variant [status channel] Status can be one of :no-action :created :removed :updated or channel-in-use
-   channel can be nil when no-action is required in the degenerate case of persisting blank identifier
-   when no channel exists for that channel-type.
-   Expects there to be at most 1 channel for the type otherwise throws an exception."
-  [{:keys [db] :as res} {:keys [user-id identifier channel-type-id] :as new-data} clear-verified? modifier-user-id]
-  (if (and (seq identifier)
-           (channel-used-by-another? res channel-type-id identifier user-id))
-    [channel-in-use nil]
-    (let [chans (find-channels-by-user-id res user-id channel-type-id)
-          ch (first chans)
-          new-identifier (:identifier new-data)
-          data (cond-> new-data
-                 clear-verified? (assoc :verified-at nil))]
-
-      (match [(count chans)
-              (if (str/blank? new-identifier) :new-blank :new-some)
-              (if (= new-identifier (:identifier ch)) :unchanged :changed)]
-             [0 :new-blank _] [:no-action nil]
-             [0 :new-some _] [:created (create-channel res (dissoc new-data :verified-at) modifier-user-id)]
-             [1 :new-blank _] [:removed (delete-channel res (:id ch))]
-             [1 :new-some :changed] [:updated (update-channel res (:id ch) new-data modifier-user-id)]
-             [1 :new-some :unchanged] [:no-action ch]
-             :else (throw (ex-info "Expected at most 1 channel." {:data new-data
-                                                                  :count (count chans)}))))))
-
-(s/defn persist-email :- m/ChannelPersistResult
-  "Updates in place the email associated with the user only if it differs.
-   Expects there to only be one email channel otherwise throws an exception."
-  [res user-id :- s/Int new-email :- (s/maybe s/Str) clear-verified? :- s/Bool modifier-user-id :- s/Int]
-  (let [data {:user-id user-id
-              :identifier (some-> new-email email/normalize)
-              :channel-type-id m/email-channel-type-id}]
-    (persist-channel res data clear-verified? modifier-user-id)))
-
-(s/defn persist-mobile :- m/ChannelPersistResult
-  "Updates in place the email associated with the user only if it differs.
-   Expects there to only be one email channel otherwise throws an exception."
-  [res user-id :- s/Int new-mobile :- (s/maybe s/Str) clear-verified? :- s/Bool modifier-user-id :- s/Int]
-  (let [data {:user-id user-id
-              :identifier (some-> new-mobile tel/normalize)
-              :channel-type-id m/mobile-channel-type-id}]
-    (persist-channel res data clear-verified? modifier-user-id)))
-
-;; -- New User
-(s/defn filter-existing-identifiers :- [m/ChannelIdentifier]
-  [res channels :- [m/ChannelIdentifier]]
-  (let [chan-exists? (fn [{:keys [channel-type-id identifier]}]
-                       (some? (find-channel-by-type res channel-type-id identifier)))]
-    (doall (filter chan-exists? channels))))
-
-(s/defn validate-channel-identifiers
-  "Validates that the channel identifier are not already present.
-   Throws a validation exception when an identifier exists."
-  [res {:keys [channels]} :- m/NewUser]
-  (when-let [{:keys [identifier]} (first (filter-existing-identifiers res channels))]
-    (throw (ex/validation duplicate-channel-ex (format "Identifier %s already exists." identifier)))))
-
-(s/defn validate-new-user
-  [res {:keys [channel-type-id password] :as new-user} :- m/NewUser]
-  (validate-channel-identifiers res new-user)
-  (when (= m/email-channel-type-id channel-type-id)
+(defn- validate-new-user
+  [res {:keys [channel-identifiers password] :as new-user}]
+  (channel/validate-channel-identifiers res channel-identifiers)
+  (when (contains? (set (map :channel-type-id channel-identifiers)) channel/email-type-id)
     (when-not (seq password)
-      (throw (ex/validation password-required-ex "Passowrd is required for e-mail signup.")))))
+      (throw (ex/validation password-required-err "Passowrd is required for e-mail signup.")))))
 
-(s/defn ^:private user->user-save :- m/UserSave
+(defn- user->user-setup
   "User record with password-digest if password is present."
   [{:keys [password] :as user}]
   (cond-> (select-keys user [:first-name :last-name])
@@ -195,209 +76,138 @@
       (assoc :user-id user-id)))
 
 
-(s/defn find-addresses-by-user-id :- [m/Address]
-  "Find all addresses by the user-id."
-  [{:keys [db] :as res} user-id :- s/Int]
-  (->> (db/select-address-ids-by-user-id db user-id)
-       (address/find-addresses-by-ids res)))
+;;----------------------------------------------------------------------
+(s/fdef setup
+        :args (s/cat :res map? :new-user ::domain/new-user :creator-id ::domain/user-id)
+        :ret ::domain/user-id)
 
-(s/defn ^:private create-user-address
-  [{:keys [db] :as res} user-id :- s/Int address :- m/Address creator-id :- s/Int]
-  (let [address-id (:id (address/create-address res address creator-id))]
-    (db/insert-user-address db user-id address-id creator-id)))
-
-(s/defn create-new-user :- m/User
+(defn setup
   "Creates a new user from a channel."
-  [{:keys [db] :as res} {:keys [channels roles] :as new-user} :- m/NewUser creator-id :- s/Int]
+  [{:keys [db] :as res} {:keys [channel-identifiers role-ids] :as new-user} creator-id]
   (validate-new-user res new-user)
-  (let [user-record (user->user-save new-user)
+  (let [user-record (user->user-setup new-user)
         user-id (volatile! nil)]
     (jdbc/with-db-transaction [txn db]
       (vreset! user-id (db/insert-user txn user-record creator-id))
-      (db/insert-channels txn (map #(assoc % :user-id @user-id) channels) creator-id)
-      (db/insert-user-roles txn @user-id roles creator-id)
+      (db/insert-channels txn (map #(assoc % :user-id @user-id) channel-identifiers) creator-id)
+      (db/insert-user-roles txn @user-id role-ids creator-id)
       (when-let [address (:address new-user)]
-        (create-user-address (assoc res :db txn) @user-id address creator-id)))
-
-    (find-user-by-id res @user-id)))
-
-(s/defn update-user
-  [{:keys [db] :as res} user-id :- s/Int user :- m/UpdateUser updater-user-id]
-  (let [user-record (user->user-save user)]
-    (db/update-user db user-id user-record updater-user-id)))
-
-(s/defn find-user-auth :- m/UserAuth
-  "Finds roles and permissions for the user specified by user-id."
-  [{:keys [db]} user-id :- s/Int]
-  (let [rename-map {"role" :roles "permission" :permissions}
-        xs (seq (db/select-user-auth-by-user-id db user-id))]
-    (merge {:roles #{} :permissions #{}}
-           (set/rename-keys (ext/group-by+ :kind (comp keyword :name) set xs)
-                            rename-map))))
-
-(s/defn find-user-roles :- #{s/Keyword}
-  "Look up all roles for a user."
-  [res user-id :- s/Int]
-  (:roles (find-user-auth res user-id)))
-
-(def find-roles-by-user-id find-user-roles)
-
-(s/defn find-user-ids-by-role-id :- #{s/Int}
-  [{:keys [db]} role-id :- s/Int]
-  (db/select-user-ids-by-role-ids db [role-id]))
+        (address/assoc-user (assoc res :db txn) address @user-id creator-id)))
+    @user-id))
 
 
-(s/defn send-mobile-token :- s/Bool
-  "Send a mobile token to the user with mobile-nbr. Store in db to verify.
-   Throws an exception if the mobile channel doesn't exist for the identifier."
-  [{:keys [sms] :as res} req :- m/OneTimePassRequest user-id :- s/Int]
-  (let [{mobile-nbr :identifier} req
-        sms-msg {:to-nbr mobile-nbr :body (:message-body req)}
-        {channel-id :id} (find-mobile-channel! res mobile-nbr)
-        channel-update (select-keys req [:token :token-expiration])]
-    (update-channel res channel-id channel-update user-id)
-    ;; text the token to the user
-    (sms/send sms sms-msg)
-    true))
+(defn- user->user-update
+  "Only allows updating first and last name. Updating password is done via a dedicated method."
+  [user]
+  (select-keys user [:first-name :last-name]))
 
-(s/defn user->token :- s/Str
-  [{:keys [token-factory]} user :- m/User]
-  (assert token-factory)
-  (token/data->token token-factory user))
+;;----------------------------------------------------------------------
+(s/fdef update-by-id
+        :args (s/cat :res map? :user-id ::domain/user-id :user map? :update-user-id ::domain/user-id)
+        :ret int?)
 
-(s/defn user-id->token :- s/Str
-  [res user-id :- s/Int]
-  (user->token res (find-user-by-id! res user-id)))
+(defn update-by-id
+  "NB. This won't update the password. Call set-password separately."
+  [{:keys [db] :as res} user-id user updater-user-id]
+  (let [user-record (user->user-update user)]
+    (db/update-user-by-id db user-id user-record updater-user-id)))
 
-(s/defn token->user :- m/User
-  "Inverse of user->token. Otherwise throws an AuthExceptionInfo."
-  [{:keys [token-factory]} token :- s/Str]
-  (assert token-factory)
-  (token/token->data! token-factory token))
 
-(s/defn auth-with-token :- s/Int
-  "Check the identifier and token combination is not yet expired. Answers with the user-id.
-   Throws exceptions if unexpired identifier and token combo is not found."
-  [{:keys [db] :as res} identifier :- s/Str token :- s/Str]
-  (let [{:keys [id user-id verified-at] :as chan} (db/select-channel-for-user-auth db identifier token)]
-    (when-not chan
-      (throw (ex/auth channel-auth-failed-ex "Auth failed.")))
-    (let [channel-update (cond-> {:token nil :token-expiration nil}
-                           (not verified-at) (assoc :verified-at (t/now)))]
-      (update-channel res id channel-update user-id)
-      user-id)))
+;;----------------------------------------------------------------------
+(s/fdef set-password
+        :args (s/cat :res map? :user-id ::domain/user-id :password string? :modifier-id ::domain/user-id)
+        :ret  any?)
 
-(s/defn user->auth-response :- m/AuthResponse
-  [res user :- m/User]
-  {:user user
-   :roles (find-user-roles res (:id user))
-   :token (user->token res user)})
+(defn set-password
+  [{:keys [db]} user-id password modifier-id]
+  (db/update-user-by-id db user-id {:password-digest (hashers/derive password)} modifier-id))
 
-(s/defn user-id->auth-response :- m/AuthResponse
-  [res user-id :- s/Int]
-  (user->auth-response res (find-user-by-id! res user-id)))
 
-(s/defn find-email-channels-by-user-id :- [m/Channel]
-  "Enumerates all email channels for the user."
-  [{:keys [db]} user-id :- s/Int]
-  (filter m/email-channel? (db/select-channels-by-user-id db user-id)))
+;;----------------------------------------------------------------------
+(s/fdef get-roles-by-id
+        :args (s/cat :res map? :user-id ::domain/user-id)
+        :ret (s/coll-of ::domain/role))
 
-(s/defn find-user-info! :- m/UserInfo
-  [res user-id :- s/Int]
-  (-> (find-user-by-id! res user-id)
-      (assoc :roles (find-user-roles res user-id))))
+(defn get-roles-by-id
+  [{:keys [db]} user-id]
+  (db/select-user-roles-by-user-id db user-id))
 
-(s/defn add-user-roles
-  [{:keys [db]} user-id :- s/Int role-ids :- (s/either [s/Int] #{s/Int}) editor-user-id :- s/Int]
-  (db/insert-user-roles db user-id (set role-ids) editor-user-id))
+;;----------------------------------------------------------------------
+(s/fdef get-permissions-by-id
+        :args (s/cat :res map? :user-id ::domain/user-id)
+        :ret (s/coll-of ::domain/permission))
 
-(s/defn delete-user-roles
-  [{:keys [db]} user-id :- s/Int role-ids :- (s/either [s/Int] #{s/Int}) editor-user-id :- s/Int]
+(defn get-permissions-by-id
+  [{:keys [db]} user-id]
+  (db/select-user-permissions-by-user-id db user-id))
+
+(defn get-user-ids-by-role-id
+  [{:keys [db]} role-id]
+  (db/select-user-ids-with-role-ids db [role-id]))
+
+;;----------------------------------------------------------------------
+(s/fdef assoc-roles
+        :args (s/cat :res map? :user-id ::domain/user-id :role-ids (s/coll-of ::domain/id) :updater-id ::domain/user-id)
+        :ret any?)
+
+(defn assoc-roles
+  [{:keys [db]} user-id role-ids updater-id]
+  (db/insert-user-roles db user-id (set role-ids) updater-id))
+
+;;----------------------------------------------------------------------
+(s/fdef dissoc-roles
+        :args (s/cat :res map? :user-id ::domain/user-id :role-ids (s/coll-of ::domain/id) :updater-id ::domain/user-id)
+        :ret any?)
+
+(defn dissoc-roles
+  [{:keys [db]} user-id role-ids updater-id]
   (db/delete-user-roles db user-id (set role-ids)))
 
-(s/defn delete-user
-  [{:keys [db]} user-id :- s/Int delete-user-id :- s/Int]
-  (db/delete-user db user-id))
+;;----------------------------------------------------------------------
+(s/fdef delete-by-id
+        :args (s/cat :res map? :id ::domain/user-id :updater-id ::domain/user-id)
+        :ret any?)
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Authenticate
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defmulti authenticate
-  (fn [res user-auth]
-    (first (keys user-auth))))
+(defn delete-by-id
+  [{:keys [db]} id updater-id]
+  (db/delete-user-by-id db id))
 
+;;----------------------------------------------------------------------
+(s/fdef set-roles
+        :args (s/cat :res map? :user-id ::domain/user-id :role-ids (s/coll-of ::domain/id) :updater-id ::domain/user-id)
+        :ret any?)
 
-(defmethod authenticate :with-token
-  [res {:keys [with-token]}]
-  (let [{:keys [identifier token]} with-token
-        identifier (cond-> identifier
-                     (email/valid? identifier) identity
-                     (tel/valid? identifier) tel/normalize)
-        user-id (auth-with-token res identifier token)]
-    (user-id->auth-response res user-id)))
+(defn set-roles
+  [{:keys [db] :as res} user-id role-ids updater-id]
+  (let [role-ids (set role-ids)
+        cur-roles (set (map :id (get-roles-by-id res user-id)))
+        rm-roles (set/difference cur-roles role-ids)
+        add-roles (set/difference role-ids cur-roles)]
 
-(defmethod authenticate :with-password
-  [res {:keys [with-password]}]
-  (let [{:keys [email password]} with-password
-        {:keys [id password-digest]} (some->> (find-email-channel res email)
-                                              :user-id
-                                              (find-user-all-fields-by-id res))]
-
-    (when-not (seq password-digest)
-      (throw (ex/auth :user/invalid-password "Invalid password.")))
-
-    (when-not (hashers/check password password-digest)
-      (throw (ex/auth :user/invalid-password "Invalid password.")))
-
-    (user-id->auth-response res id)))
-
-(s/defn verify-channel :- m/Channel
-  "Verify the channel if the token is valid. Returns the updated channel or throws an auth exception"
-  [{:keys [db] :as res} token :- s/Str]
-  (let [{:keys [id user-id token-expiration verified-at] :as chan} (db/select-channel-by-token db token)
-        err (cond
-              (not token-expiration) token-invalid
-              (t/before? token-expiration (t/now)) token-expired)]
-
-    (when err
-      (throw (ex/validation err)))
-
-    (let [chan-data (cond-> {:token nil :token-expiration nil}
-                      (not verified-at) (assoc :verified-at (t/now)))]
-      (update-channel res id chan-data user-id))))
-
-(s/defn reset-password :- m/AuthResponse
-  "Resets the password for the user with the unexpired token."
-  [{:keys [db] :as res} token :- s/Str password :- s/Str]
-  (let [{:keys [id user-id token-expiration verified-at]} (db/select-channel-by-token db token)
-        err (cond
-              (not token-expiration) token-invalid
-              (t/before? token-expiration (t/now)) token-expired)]
-
-    (when err
-      (throw (ex/validation err)))
-
-    (jdbc/with-db-transaction [txn db]
-      (let [res (assoc res :db txn)
-            chan-data (cond-> {:token nil :token-expiration nil}
-                        (not verified-at) (assoc :verified-at (t/now)))]
-        (update-user res user-id {:password password} user-id)
-        (update-channel res id chan-data user-id)))
-
-    (user-id->auth-response res user-id)))
-
-
-(s/defn set-roles
-  [{:keys [db] :as res} user-id :- s/Int roles :- (s/either [s/Int] #{s/Int}) modifier-user-id]
-  (let [roles (set roles)
-        cur-roles (db/select-role-ids-by-user-ids db [user-id])
-        rm-roles (set/difference cur-roles roles)
-        add-roles (set/difference roles cur-roles)]
-
-    (log/infof "roles: %s, cur-roles: %s, rm-roles: %s, add-roles: %s" roles cur-roles rm-roles add-roles)
+    ;(log/debugf "roles: %s, cur-roles: %s, rm-roles: %s, add-roles: %s" role-ids cur-roles rm-roles add-roles)
     (jdbc/with-db-transaction [txn db]
       (let [res (assoc res :db txn)]
         (when (seq rm-roles)
-          (delete-user-roles res user-id rm-roles modifier-user-id))
+          (dissoc-roles res user-id rm-roles updater-id))
         (when (seq add-roles)
-          (add-user-roles res user-id add-roles modifier-user-id))))))
+          (assoc-roles res user-id add-roles updater-id))))))
+
+(defn get-by-ids
+  [{:keys [db]} ids]
+  (if (seq ids)
+    (db/select-users-by-ids db {:ids ids})
+    []))
+
+;;----------------------------------------------------------------------
+(s/fdef get-role-and-permission-names
+        :args (s/cat :res map? :user-id ::domain/user-id)
+        :ret ::domain/role-and-permission-names)
+
+(defn get-role-and-permission-names
+  "When no caching is involved this will get both the role and permission names in
+   one sql query, potentially useful for authorization off of roles and permissions."
+  [{:keys [db]} user-id]
+  (let [data (->> (db/select-user-role-and-permission-names db {:user-id user-id})
+                  (ext/group-by+ :kind (comp keyword :name) set))]
+    (merge {:role-names #{} :permission-names #{}}
+     (set/rename-keys data {"role" :role-names "permission" :permission-names}))))

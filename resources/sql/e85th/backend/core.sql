@@ -5,7 +5,16 @@
        , u.last_name       as "last-name"
        , u.password_digest as "password-digest"
     from "user" u
-   where u.id = :id
+   where (:id-nil? or u.id = :id)
+
+-- :name select-users-by-ids
+  select
+         u.id
+       , u.first_name      as "first-name"
+       , u.last_name       as "last-name"
+    from "user" u
+   where u.id in (:v*:ids)
+
 
 -- :name select-channels
    select
@@ -28,23 +37,27 @@
       and (:token-expiration-nil? or c.token_expiration > :token-expiration)
       and (:verified-at-nil? or c.verified_at > :verified-at)
 
--- :name select-user-auth
+-- :name select-user-roles
    select
-          'role' as kind
+          r.id
         , r.name
+        , r.description
      from user_role ur
      join "role"    r
        on ur.role_id = r.id
-    where ur.user_id = :user-id
-union all
-   select 'permission' as kind
+    where (:user-id-nil? or ur.user_id = :user-id)
+
+-- :name select-user-permissions
+   select distinct
+          p.id
         , p.name
+        , p.description
      from user_role ur
      join role_permission rp
        on ur.role_id = rp.role_id
      join permission p
        on rp.permission_id = p.id
-    where ur.user_id = :user-id
+    where (:user-id-nil? or ur.user_id = :user-id)
 
 
 -- :name select-role
@@ -71,10 +84,13 @@ union all
           p.id
         , p.name
         , p.description
-     from permission p
+     from role r
      join role_permission rp
-       on p.id = rp.permission_id
-    where rp.role_id in (:v*:role-ids)
+       on r.id = rp.role_id
+     join permission p
+       on rp.permission_id = p.id
+    where true
+--~ (when (seq (:role-ids params))        "and r.id in (:v*:role-ids)")
 
 -- :name select-roles-by-permissions
    select
@@ -89,15 +105,16 @@ union all
 -- :name select-address
    select
           a.id
-        , a.street_1    as "street-1"
-        , a.street_2    as "street-2"
+        , a.street_number as "street-number"
+        , a.street
+        , a.unit
         , a.city
         , a.state
         , a.postal_code as "postal-code"
         , a.lat
         , a.lng
      from address a
-    where (:ids-nil? or a.id in (:v*:ids))
+    where (:id-nil? or a.id = :id)
 
 -- :name select-user-address
    select
@@ -107,12 +124,30 @@ union all
      from user_address ua
     where ua.user_id = :user-id
 
--- :name select-user-role
+-- :name select-users-with-roles
    select
            ur.id
-         , ur.user_id as "user-id"
-         , ur.role_id as "role-id"
+         , ur.user_id    as "user-id"
+         , ur.role_id    as "role-id"
      from user_role ur
-    where 1 = 1
---~ (when (seq (:role-ids params)) "and ur.role_id in (:v*:role-ids)")
---~ (when (seq (:user-ids params)) "and ur.user_id in (:v*:user-ids)")
+    where ur.role_id in (:v*:role-ids)
+
+
+-- :name select-user-role-and-permission-names
+   select
+          'role' as kind
+        , r.name
+     from user_role ur
+     join role      r
+       on ur.role_id = r.id
+    where ur.user_id = :user-id
+union all
+   select
+          'permission' as kind
+        , p.name
+     from user_role       ur
+     join role_permission rp
+       on ur.role_id = rp.role_id
+     join permission      p
+       on rp.permission_id = p.id
+    where ur.user_id = :user-id

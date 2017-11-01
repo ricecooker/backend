@@ -1,6 +1,6 @@
 drop role if exists ${roles.primary};
 create role ${roles.primary};
-create extension if not exists "uuid-ossp";
+create extension if not exists "pgcrypto";
 
 create schema audit authorization ${users.superuser.name};
 
@@ -8,15 +8,14 @@ create table audit.user (
     op              char(1)
   , ts              timestamp
   , username        text
-  , id              bigint
-  , public_id       uuid
+  , id              uuid
   , first_name      text
   , last_name       text
   , password_digest text
   , created_at      timestamp
-  , created_by      bigint
+  , created_by      uuid
   , updated_at      timestamp
-  , updated_by      bigint
+  , updated_by      uuid
 );
 
 create or replace function audit.user_audit() returns trigger as $$
@@ -40,18 +39,17 @@ create table audit.channel (
     op               char(1)
   , ts               timestamp
   , username         text
-  , id               bigint
-  , public_id        uuid
-  , user_id          bigint
-  , channel_type_id  integer
+  , id               uuid
+  , user_id          uuid
+  , channel_type_id  uuid
   , identifier       text
   , token            text
   , token_expiration timestamp
   , verified_at      timestamp
   , created_at       timestamp
-  , created_by       bigint
+  , created_by       uuid
   , updated_at       timestamp
-  , updated_by       bigint
+  , updated_by       uuid
 );
 
 create or replace function audit.channel_audit() returns trigger as $$
@@ -72,22 +70,22 @@ $$
 language plpgsql;
 
 create table audit.address (
-   op          char(1)
- , ts          timestamp
- , username    text
- , id          bigint
- , public_id   uuid
- , street_1    text
- , street_2    text
- , city        text
- , state       text
- , postal_code text
- , lat         decimal(9,6)
- , lng         decimal(9,6)
- , created_at  timestamp
- , created_by  bigint
- , updated_at  timestamp
- , updated_by  bigint
+   op            char(1)
+ , ts            timestamp
+ , username      text
+ , id            uuid
+ , street_number text
+ , street        text
+ , unit          text
+ , city          text
+ , state         text
+ , postal_code   text
+ , lat           decimal(9,6)
+ , lng           decimal(9,6)
+ , created_at    timestamp
+ , created_by    uuid
+ , updated_at    timestamp
+ , updated_by  uuid
 );
 
 create or replace function audit.address_audit() returns trigger as $$
@@ -112,11 +110,11 @@ create table audit.user_address (
     op         char(1)
   , ts         timestamp
   , username   text
-  , id         bigint
-  , user_id    bigint
-  , address_id bigint
+  , id         uuid
+  , user_id    uuid
+  , address_id uuid
   , created_at timestamp
-  , created_by bigint
+  , created_by uuid
 );
 
 create or replace function audit.user_address_audit() returns trigger as $$
@@ -143,14 +141,13 @@ create table audit.permission (
     op          char(1)
   , ts          timestamp
   , username    text
-  , id          integer
-  , public_id   uuid
+  , id          uuid
   , name        text
   , description text
   , created_at  timestamp
-  , created_by  bigint
+  , created_by  uuid
   , updated_at  timestamp
-  , updated_by  bigint
+  , updated_by  uuid
 );
 
 create or replace function audit.permission_audit() returns trigger as $$
@@ -175,14 +172,13 @@ create table audit.role (
     op          char(1)
   , ts          timestamp
   , username    text
-  , id          integer
-  , public_id   uuid
+  , id          uuid
   , name        text
   , description text
   , created_at  timestamp
-  , created_by  bigint
+  , created_by  uuid
   , updated_at  timestamp
-  , updated_by  bigint
+  , updated_by  uuid
 );
 
 create or replace function audit.role_audit() returns trigger as $$
@@ -206,11 +202,11 @@ create table audit.role_permission (
     op            char(1)
   , ts            timestamp
   , username      text
-  , id            bigint
-  , role_id       integer
-  , permission_id integer
+  , id            uuid
+  , role_id       uuid
+  , permission_id uuid
   , created_at    timestamp
-  , created_by    bigint
+  , created_by    uuid
 );
 
 create or replace function audit.role_permission_audit() returns trigger as $$
@@ -234,11 +230,11 @@ create table audit.user_role (
     op         char(1)
   , ts         timestamp
   , username   text
-  , id         bigint
-  , user_id    bigint
-  , role_id    integer
+  , id         uuid
+  , user_id    uuid
+  , role_id    uuid
   , created_at timestamp
-  , created_by bigint
+  , created_by uuid
 );
 
 create or replace function audit.user_role_audit() returns trigger as $$
@@ -262,53 +258,57 @@ language plpgsql;
 
 -- begin user info
 create table "user" (
-    id              bigserial primary key
-  , public_id       uuid      not null default uuid_generate_v4()
+    id              uuid      primary key default gen_random_uuid()
   , first_name      text      not null
   , last_name       text      not null
   , password_digest text      null -- nullable ie if you use social login
   , created_at      timestamp not null default now()
-  , created_by      bigint    not null
+  , created_by      uuid      null
   , updated_at      timestamp not null default now()
-  , updated_by      bigint    not null
+  , updated_by      uuid      null
 );
 
-create unique index unq_user_public_id on "user"(public_id);
-
-create trigger tg_user_audit before insert or update or delete on "user"
-  for each row execute procedure audit.user_audit();
 
 insert into "user"(first_name, last_name, created_by, updated_by)
-  values ('System', 'User', 1, 1);
+  values ('System', 'User');
+
+update "user" set created_by = id, updated_by = id;
+
+alter table "user" alter column created_by set not null, alter column updated_by set not null;
+
+create trigger tg_user_audit before insert or update or delete on "user"
+for each row execute procedure audit.user_audit();
 
 create table channel_type (
-    id         serial    primary key
+    id         uuid      primary key default gen_random_uuid()
   , name       text      not null
   , created_at timestamp not null default now()
-  , created_by bigint    not null references "user"(id)
+  , created_by uuid      not null references "user"(id)
 );
 
 create unique index unq_channel_type_name on channel_type(name);
 
-insert into channel_type (name, created_by)
-  values ('mobile',1), ('email',1), ('google',1);
+insert into channel_type (id, name, created_by)
+       select c.id, c.name, u.id
+         from (values
+                      ('4e3c5337-7d7d-4398-bfa7-c4e17bbffa21', 'email')
+                    , ('b9e260b7-72ce-4b38-9689-9f45266eff43', 'mobile')) as c(id, name)
+   cross join "user" u;
 
 create table channel (
-    id               bigserial primary key
-  , public_id        uuid      not null default uuid_generate_v4()
-  , user_id          bigint    not null references "user"(id)
-  , channel_type_id  integer   not null references channel_type(id)
+    id               uuid      primary key default gen_random_uuid()
+  , user_id          uuid      not null references "user"(id)
+  , channel_type_id  uuid      not null references channel_type(id)
   , identifier       text      not null -- email address, google id, phone #, etc
   , token            text      null -- token used for verification
   , token_expiration timestamp null
   , verified_at      timestamp null
   , created_at       timestamp not null default now()
-  , created_by       bigint    not null references "user"(id)
+  , created_by       uuid      not null references "user"(id)
   , updated_at       timestamp not null default now()
-  , updated_by       bigint    not null references "user"(id)
+  , updated_by       uuid      not null references "user"(id)
 );
 
-create unique index unq_channel_public_id on channel(public_id);
 create unique index unq_channel_channel_type_identifier on channel(channel_type_id,identifier);
 create index idx_channel_user_id on channel(user_id);
 create unique index unq_channel_token on channel(token);
@@ -317,32 +317,31 @@ create trigger tg_channel_audit before insert or update or delete on channel
 for each row execute procedure audit.channel_audit();
 
 create table address (
-   id          bigserial    primary key
- , public_id   uuid         not null default uuid_generate_v4()
- , street_1    text
- , street_2    text
- , city        text         not null
- , state       text         not null
- , postal_code text
- , lat         decimal(9,6)
- , lng         decimal(9,6)
- , created_at  timestamp    not null default now()
- , created_by  bigint       not null references "user"(id)
- , updated_at  timestamp    not null default now()
- , updated_by  bigint       not null references "user"(id)
+   id            uuid        primary key default gen_random_uuid()
+ , street_number text
+ , street        text
+ , unit          text
+ , city          text         not null
+ , state         text         not null
+ , postal_code   text
+ , lat           decimal(9,6)
+ , lng           decimal(9,6)
+ , created_at    timestamp    not null default now()
+ , created_by    uuid         not null references "user"(id)
+ , updated_at    timestamp    not null default now()
+ , updated_by    uuid         not null references "user"(id)
 );
 
-create unique index unq_address_public_id on address(public_id);
 create trigger tg_address_audit before insert or update or delete on address
 for each row execute procedure audit.address_audit();
 
 
 create table user_address (
-    id         bigserial primary key
-  , user_id    bigint    not null references "user"(id)
-  , address_id bigint    not null references address(id)
+    id         uuid      primary key default gen_random_uuid()
+  , user_id    uuid      not null references "user"(id)
+  , address_id uuid      not null references address(id)
   , created_at timestamp not null default now()
-  , created_by bigint    not null references "user"(id)
+  , created_by uuid      not null references "user"(id)
 );
 
 create unique index unq_user_address on user_address(user_id, address_id);
@@ -354,46 +353,42 @@ create trigger tg_user_address_audit before insert or update or delete on user_a
 -- Auth
 --
 create table "permission" (
-    id          serial    primary key
-  , public_id   uuid      not null default uuid_generate_v4()
+    id          uuid      primary key default gen_random_uuid()
   , name        text      not null
   , description text      not null
   , created_at  timestamp not null default now()
-  , created_by  bigint    not null references "user"(id)
+  , created_by  uuid      not null references "user"(id)
   , updated_at  timestamp not null default now()
-  , updated_by  bigint    not null references "user"(id)
+  , updated_by  uuid      not null references "user"(id)
 );
 
 create unique index unq_permission_name on "permission"(name);
-create unique index unq_permission_public_id on permission(public_id);
 
 create trigger tg_permission_audit before insert or update or delete on "permission"
   for each row execute procedure audit.permission_audit();
 
 create table "role" (
-    id          serial    primary key
-  , public_id   uuid      not null default uuid_generate_v4()
+    id          uuid      primary key default gen_random_uuid()
   , name        text      not null
   , description text      not null
   , created_at  timestamp not null default now()
-  , created_by  bigint    not null references "user"(id)
+  , created_by  uuid      not null references "user"(id)
   , updated_at  timestamp not null default now()
-  , updated_by  bigint    not null references "user"(id)
+  , updated_by  uuid      not null references "user"(id)
 );
 
 create unique index unq_role_name on "role"(name);
-create unique index unq_role_public_id on role(public_id);
 
 create trigger tg_role_audit before insert or update or delete on "role"
   for each row execute procedure audit.role_audit();
 
 
 create table role_permission (
-    id            serial    primary key
-  , role_id       integer   not null references role(id)
-  , permission_id integer   not null references permission(id)
+    id            uuid      primary key default gen_random_uuid()
+  , role_id       uuid      not null references role(id)
+  , permission_id uuid      not null references permission(id)
   , created_at    timestamp not null default now()
-  , created_by    bigint    not null references "user"(id)
+  , created_by    uuid      not null references "user"(id)
 );
 
 create unique index unq_role_permission on role_permission(role_id, permission_id);
@@ -403,11 +398,11 @@ create trigger tg_role_permission_audit before insert or update or delete on rol
 
 
 create table user_role (
-    id         bigserial primary key
-  , user_id    bigint    not null references "user"(id)
-  , role_id    integer   not null references role(id)
+    id         uuid      primary key default gen_random_uuid()
+  , user_id    uuid      not null references "user"(id)
+  , role_id    uuid      not null references role(id)
   , created_at timestamp not null default now()
-  , created_by bigint    not null references "user"(id)
+  , created_by uuid      not null references "user"(id)
 );
 
 create unique index unq_user_role on user_role(user_id, role_id);
@@ -419,9 +414,9 @@ create trigger tg_user_role_audit before insert or update or delete on user_role
 -- Access Tracking
 ---
 create table access_log (
-   id              bigserial primary key
+   id              uuid      primary key default gen_random_uuid()
  , action          text      not null
- , user_id         bigint    null references "user"(id) -- not all access requires login
+ , user_id         uuid      null references "user"(id) -- not all access requires login
  , params          jsonb     not null
  , remote_addr     text      not null
  , x_forwarded_for text      null

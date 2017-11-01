@@ -1,22 +1,16 @@
 (ns e85th.backend.websockets
   (:require [taoensso.sente :as sente]
             [com.stuartsierra.component :as component]
-            [ring.util.http-response :as http-response]
-            [taoensso.timbre :as log]
-            [schema.core :as s])
-  (:import [clojure.lang IFn]))
+            [e85th.backend.web :as web]
+            [taoensso.timbre :as log]))
 
 (defmulti event-handler :id)
-
-(defmethod event-handler :chsk/ws-ping
-  [msg]
-  (log/debug "ping received"))
 
 (defmethod event-handler :default
   [{:keys [event id ?data ring-req ?reply-fn send-fn]}]
   (let [session (:session ring-req)
         uid     (:uid     session)]
-    (log/infof "Unhandled event: %s, id: %s, ?data: %s" event id ?data)
+    ;(log/debugf "Unhandled event: %s, id: %s, ?data: %s" event id ?data)
     (when ?reply-fn
       (?reply-fn {:umatched-event-as-echoed-from-server event}))))
 
@@ -37,7 +31,6 @@
 
   (stop [this]
     (when-let [event-router (:event-router this)]
-      (log/infof ";; Stopping Sente websocket router.")
       (event-router))
     (dissoc this :event-router :ch-sock-info))
 
@@ -48,9 +41,9 @@
         (send-fn uid msg))))
 
   (broadcast! [this msg]
-    (log/debugf "broadcast msg: %s" msg)
+    ;(log/debugf "broadcast msg: %s" msg)
     (when-let [connected-uids @(get-in this [:ch-sock-info :connected-uids])]
-      (log/debugf "connected-uids: %s" connected-uids)
+      ;(log/debugf "connected-uids: %s" connected-uids)
       (notify! this (:any connected-uids) msg)))
 
   (do-get [this req]
@@ -61,9 +54,9 @@
     (let [f (get-in this [:ch-sock-info :ajax-post-fn])]
       (f req))))
 
-(s/defn new-sente-websocket
-  "sente-server-adapter ie instance of taoensso.sente.interfaces.IServerChanAdapter"
-  [sente-server-adapter req->user-id :- IFn]
+(defn new-sente-websocket
+  "sente-server-adapter ie instance of taoensso.sente.interfaces.IServerChanAdapter req->user-id is a fn"
+  [sente-server-adapter req->user-id]
   (map->SenteWebSocket {:sente-server-adapter sente-server-adapter
                         :req->user-id req->user-id}))
 
@@ -78,9 +71,9 @@
   (broadcast! [this msg])
 
   (do-get [this req]
-    (http-response/ok {}))
+    (web/ok {}))
   (do-post [this req]
-    (http-response/ok {})))
+    (web/ok {})))
 
 (defn new-nil-websocket
   []

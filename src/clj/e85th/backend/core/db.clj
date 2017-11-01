@@ -1,45 +1,77 @@
 (ns e85th.backend.core.db
   (:require [hugsql.core :refer [def-db-fns]]
             [clojure.java.jdbc :as jdbc]
-            [schema.core :as s]
+            [clojure.spec.alpha :as s]
             [clj-time.core :as t]
             [taoensso.timbre :as log]
-            [e85th.commons.sql :as sql]
-            [e85th.backend.core.models :as m]))
+            [e85th.backend.core.domain :as domain]
+            [e85th.commons.sql :as sql]))
 
 (def-db-fns "sql/e85th/backend/core.sql")
 
-(def ^{:doc "Escaped keyword for ease of use"}
-  user-tbl (keyword "\"user\""))
+(def user-tbl "Escaped keyword for ease of use" (keyword "\"user\""))
 
-(s/defn insert-user :- s/Int
-  "Insert the user record and return the id for the row"
-  [db new-user :- m/UserSave user-id :- s/Int]
-  (:id (sql/insert! db user-tbl new-user user-id)))
+;;----------------------------------------------------------------------
+(s/fdef insert*
+        :args (s/cat :table keyword? :db some? :row map? :user-id ::domain/user-id)
+        :ret  ::domain/id)
 
-(s/defn update-user :- s/Int
-  [db user-id user-update updater-user-id]
-  (sql/update! db user-tbl (dissoc user-update :id) ["id = ?" user-id] updater-user-id))
+(defn insert*
+  [table db row user-id]
+  (:id (sql/insert! db table row user-id)))
 
-(s/defn insert-channel :- s/Int
-  [db channel :- m/NewChannel user-id :- s/Int]
-  (:id (sql/insert! db :channel channel user-id)))
+;;----------------------------------------------------------------------
+(s/fdef update*
+        :args (s/cat :table keyword? :where string? :db some?
+                     :id ::domain/id
+                     :row map? :user-id ::domain/user-id)
+        :ret  nat-int?)
 
-(s/defn update-channel :- s/Int
-  [db channel-id :- s/Int channel :- m/UpdateChannel user-id :- s/Int]
-  (sql/update! db :channel channel ["id = ?" channel-id] user-id))
+(defn update*
+  [table where db id row user-id]
+  (sql/update! db table (dissoc row :id) [where id] user-id))
 
-(s/defn insert-channels
-  [db channels :- [m/NewChannel] user-id :- s/Int]
+;;----------------------------------------------------------------------
+(s/fdef delete*
+        :args (s/cat :table keyword? :where string? :db some?
+                     :id ::domain/id)
+        :ret  nat-int?)
+
+(defn delete*
+  [table where db id]
+  (first (sql/delete! db table [where id])))
+
+
+;;----------------------------------------------------------------------
+;; User
+;;----------------------------------------------------------------------
+(def insert-user              (partial insert* user-tbl))
+(def update-user-by-id        (partial update* user-tbl "id = ?"))
+(def delete-user-by-id        (partial delete* user-tbl "id = ?"))
+
+(def ^:private default-user-params
+  {:id-nil? true
+   :id nil})
+
+(defn- select-user*
+  [db params]
+  (->> (merge default-user-params params)
+       (select-user db)))
+
+(defn select-user-by-id
+  [db id]
+  (select-user* db {:id id :id-nil? false}))
+
+;;----------------------------------------------------------------------
+;; Channel
+;;----------------------------------------------------------------------
+(def insert-channel              (partial insert* :channel))
+(def update-channel-by-id        (partial update* :channel "id = ?"))
+(def delete-channel-by-id        (partial delete* :channel "id = ?"))
+
+(defn insert-channels
+  [db channels user-id]
   (sql/insert-multi-with-audits! db :channel channels user-id))
-
-(s/defn delete-user
-  [db user-id :- s/Int]
-  (sql/delete! db user-tbl ["id = ?" user-id]))
-
-(s/defn delete-channel
-  [db channel-id :- s/Int]
-  (sql/delete! db :channel ["id = ?" channel-id]))
 
 (def ^:private default-channel-params
   {:id-nil? true
@@ -57,23 +89,23 @@
    :verified-at-nil? true
    :verified-at nil})
 
-(s/defn select-channels*
+(defn select-channels*
   [db params]
   (->> (merge default-channel-params params)
        (select-channels db)))
 
-(s/defn select-channels-by-user-id :- [m/Channel]
+(defn select-channels-by-user-id
   "Select channels by user-id"
-  [db user-id :- s/Int]
+  [db user-id]
   (select-channels* db {:user-id-nil? false :user-id user-id}))
 
-(s/defn select-channel-by-id :- (s/maybe m/Channel)
-  [db id :- s/Int]
+(defn select-channel-by-id
+  [db id]
   (first (select-channels* db {:id-nil? false :id id})))
 
-(s/defn select-channel-by-type :- (s/maybe m/Channel)
+(defn select-channel-by-type
   "Select channel by the channel type and identifier."
-  [db channel-type-id :- s/Int identifier :- s/Str]
+  [db channel-type-id identifier]
   (let [params {:channel-type-id-nil? false :channel-type-id channel-type-id
                 :identifier-nil? false :identifier identifier}
         rs (select-channels* db params)]
@@ -81,12 +113,12 @@
             (format "Expected at most 1 row for channel-type %s, identifier %s" channel-type-id identifier))
     (first rs)))
 
-(s/defn select-channels-by-identifier :- [m/Channel]
-  [db identifier :- s/Str]
+(defn select-channels-by-identifier
+  [db identifier]
   (select-channels* db {:identifier-nil? false :identifier identifier}))
 
-(s/defn select-channel-for-user-auth :- (s/maybe m/Channel)
-  [db identifier :- s/Str token :- s/Str]
+(defn select-channel-for-user-auth
+  [db identifier token]
   (let [params {:identifier-nil? false :identifier identifier
                 :token-nil? false :token token
                 :token-expiration-nil? false :token-expiration (t/now)}
@@ -94,205 +126,190 @@
     (assert (<=  (count chans) 1) "Expected at most 1 chan to match.")
     (first chans)))
 
-(s/defn select-channel-by-token :- (s/maybe m/Channel)
-  [db token :- s/Str]
+(defn select-channel-by-token
+  [db token]
   (let [chans (select-channels* db {:token-nil? false :token token})]
     (assert (<= (count chans) 1) "Expected at most 1 chan to match.")
     (first chans)))
 
-(s/defn select-channel-by-active-token :- (s/maybe m/Channel)
-  [db token :- s/Str]
+(defn select-channel-by-active-token
+  [db token]
   (let [params {:token-nil? false :token token
                 :token-expiration-nil? false :token-expiration (t/now)}
         chans (select-channels* db params)]
     (assert (<= (count chans) 1) "Expected at most 1 chan to match.")
     (first chans)))
 
-(s/defn insert-address :- s/Int
-  [db address :- m/Address creator-id :- s/Int]
-  (assert (not (contains? address :id)))
-  (:id (sql/insert! db :address address creator-id)))
 
-(s/defn update-address
-  [db address-id :- s/Int data :- m/UpdateAddress user-id :- s/Int]
-  (sql/update! db :address data ["id = ?" address-id] user-id))
+;;----------------------------------------------------------------------
+;; Address
+;;----------------------------------------------------------------------
+(def insert-address              (partial insert* :address))
+(def update-address-by-id        (partial update* :address "id = ?"))
+(def delete-address-by-id        (partial delete* :address "id = ?"))
 
-(s/defn insert-user-address :- s/Int
-  [db user-id :- s/Int address-id :- s/Int creator-id :- s/Int]
+(defn insert-user-address
+  [db user-id address-id creator-id]
   (:id (sql/insert-with-create-audits! db :user-address {:user-id user-id
                                                          :address-id address-id} creator-id)))
 
+(def ^:private default-address-params
+  {:id-nil? true :id nil})
 
-(s/defn select-user-auth-by-user-id
-  [db user-id :- s/Int]
-  (select-user-auth db {:user-id user-id}))
+(defn- select-address*
+  [db params]
+  (select-address db (merge default-address-params params)))
+
+(defn select-address-by-id
+  [db id]
+  (first (select-address* db {:id-nil? false :id id})))
 
 
-(s/defn insert-user-roles
-  [db user-id :- s/Int roles :- #{s/Int} creator-id :- s/Int]
-  (let [xs (map #(hash-map :role-id % :user-id user-id) roles)]
-    (sql/insert-multi-with-create-audits! db :user-role xs creator-id)))
-
-(s/defn delete-user-roles
-  [db user-id :- s/Int roles :- #{s/Int}]
-  (let [xs (map #(hash-map :role-id % :user-id user-id) roles)]
-    (jdbc/with-db-transaction [txn db]
-      (doseq [role-id roles]
-        (sql/delete! txn :user-role ["user_id = ? and role_id = ?" user-id role-id])))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;----------------------------------------------------------------------
 ;; Roles
-(s/defn insert-role :- s/Int
-  "Inserts a role record and returns the id for the row."
-  [db role :- m/Role user-id]
-  (:id (sql/insert! db :role role user-id)))
-
-(s/defn update-role :- s/Int
-  "Updates a role record and returns the count updated."
-  [db role-id role :- m/UpdateRole user-id]
-  (sql/update! db :role (dissoc role :id) ["id = ?" role-id] user-id))
-
-(s/defn delete-role
-  [db id :- s/Int]
-  (first (sql/delete! db :role ["id = ?" id])))
+;;----------------------------------------------------------------------
+(def insert-role              (partial insert* :role))
+(def update-role-by-id        (partial update* :role "id = ?"))
+(def delete-role-by-id        (partial delete* :role "id = ?"))
 
 (def ^:private default-role-params
   {:id-nil? true :id nil
    :name-nil? true :name nil})
 
-(s/defn select-role*
+(defn select-role*
   [db params]
   (->> params
        (merge default-role-params)
        (select-role db)
        (map #(update-in % [:name] keyword))))
 
-(s/defn select-role-by-id :- (s/maybe m/Role)
-  [db role-id :- s/Int]
+(defn select-role-by-id
+  [db role-id]
   (first (select-role* db {:id-nil? false :id role-id})))
 
-(s/defn select-role-by-name :- (s/maybe m/Role)
-  [db role-name :- s/Str]
+(defn select-role-by-name
+  [db role-name]
   (first (select-role* db {:name-nil? false :name role-name})))
 
-(s/defn select-all-roles :- [m/Role]
+(defn select-all-roles
   [db]
   (select-role* db {}))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;----------------------------------------------------------------------
 ;; Permissions
-(s/defn insert-permission :- s/Int
-  "Inserts a permission record and returns the id for the row."
-  [db permission :- m/Permission user-id]
-  (:id (sql/insert! db :permission permission user-id)))
-
-(s/defn update-permission :- s/Int
-  "Updates a permission record and returns the count updated."
-  [db permission-id permission :- m/UpdatePermission user-id]
-  (sql/update! db :permission (dissoc permission :id) ["id = ?" permission-id] user-id))
-
-(s/defn delete-permission
-  [db id :- s/Int]
-  (first (sql/delete! db :permission ["id = ?" id])))
+;;----------------------------------------------------------------------
+(def insert-permission              (partial insert* :permission))
+(def update-permission-by-id        (partial update* :permission "id = ?"))
+(def delete-permission-by-id        (partial delete* :permission "id = ?"))
 
 (def ^:private default-permission-params
   {:id-nil? true :id nil
    :name-nil? true :name nil})
 
-(s/defn select-permission*
+(defn select-permission*
   [db params]
   (->> params
        (merge default-permission-params)
        (select-permission db)
        (map #(update % :name keyword))))
 
-(s/defn select-all-permissions :- [m/Permission]
+(defn select-all-permissions
   [db]
   (select-permission* db {}))
 
-(s/defn select-permission-by-id :- (s/maybe m/Permission)
-  [db permission-id :- s/Int]
+(defn select-permission-by-id
+  [db permission-id]
   (first (select-permission* db {:id-nil? false :id permission-id})))
 
-(s/defn select-permission-by-name :- (s/maybe m/Permission)
-  [db permission-name :- s/Str]
+(defn select-permission-by-name
+  [db permission-name]
   (first (select-permission* db {:name-nil? false :name permission-name})))
 
-
-(s/defn select-permissions-by-role-ids :- [m/Permission]
-  [db role-ids :- [s/Int]]
-  (->> {:role-ids role-ids}
-       (select-permissions-by-roles db)
+(defn- select-permissions-by-roles*
+  [db params]
+  (->> (select-permissions-by-roles db params)
        (map #(update % :name keyword))))
 
-(s/defn select-roles-by-permission-ids :- [m/Role]
-  [db permission-ids :- [s/Int]]
+(defn select-permissions-by-role-ids
+  "role-ids are ints"
+  [db role-ids]
+  (if (seq role-ids)
+    (select-permissions-by-roles* db {:role-ids role-ids})
+    []))
+
+(defn select-roles-by-permission-ids
+  "permission-ids are ints"
+  [db permission-ids]
   (->> {:permission-ids permission-ids}
        (select-roles-by-permissions db)
        (map #(update % :name keyword))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Address
-(def ^:private default-address-params
-  {:ids-nil? true :ids nil})
 
-(defn- select-address*
+;;----------------------------------------------------------------------
+;; User Roles
+;;----------------------------------------------------------------------
+(defn insert-user-roles
+  [db user-id role-ids creator-id]
+  (let [xs (map #(hash-map :role-id % :user-id user-id) role-ids)]
+    (sql/insert-multi-with-create-audits! db :user-role xs creator-id)))
+
+(defn delete-user-roles
+  [db user-id role-ids]
+  (let [xs (map #(hash-map :role-id % :user-id user-id) role-ids)]
+    (jdbc/with-db-transaction [txn db]
+      (doseq [role-id role-ids]
+        (sql/delete! txn :user-role ["user_id = ? and role_id = ?" user-id role-id])))))
+
+
+(def ^:private default-user-role-params
+  {:user-id-nil? true :user-id nil})
+
+(defn- select-user-roles*
   [db params]
-  (select-address db (merge default-address-params params)))
+  (->> (merge default-user-role-params params)
+       (select-user-roles db)
+       (map #(update % :name keyword))))
 
-(s/defn select-addresses-by-ids :- [m/Address]
-  [db ids :- [s/Int]]
-  (if (seq ids)
-    (select-address* db {:ids-nil? false :ids ids})
-    []))
+(defn select-user-roles-by-user-id
+  [db user-id]
+  (select-user-roles* db {:user-id-nil? false :user-id user-id}))
 
-(s/defn select-address-ids-by-user-id :- [s/Int]
-  [db user-id :- s/Int]
-  (->> {:user-id user-id}
-       (select-user-address db)
-       (map :address-id)))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; User Role
-(s/defn select-user-role*
-  [db user-ids :- [s/Int] role-ids :- [s/Int]]
-  (let [params (cond-> {:role-ids-nil? true :role-ids role-ids
-                        :user-ids-nil? true :user-ids user-ids}
-                 (some? (seq role-ids)) (assoc :role-ids-nil? false)
-                 (some? (seq user-ids)) (assoc :user-ids-nil? false))]
-    (select-user-role db params)))
+(def ^:private default-user-permission-params
+  {:user-id-nil? true :user-id nil})
 
-(s/defn select-user-ids-by-role-ids :- #{s/Int}
-  [db role-ids :- [s/Int]]
+(defn- select-user-permissions*
+  [db params]
+  (->> (merge default-user-permission-params params)
+       (select-user-permissions db)
+       (map #(update % :name keyword))))
+
+(defn select-user-permissions-by-user-id
+  [db user-id]
+  (select-user-permissions* db {:user-id-nil? false :user-id user-id}))
+
+(defn select-user-ids-with-role-ids
+  [db role-ids]
   (assert (seq role-ids) "Must specify at least one role id.")
-  (->> (select-user-role* db [] role-ids)
+  (->> (select-users-with-roles db {:role-ids role-ids})
        (map :user-id)
        set))
 
-(s/defn select-role-ids-by-user-ids :- #{s/Int}
-  [db user-ids :- [s/Int]]
-  (assert (seq user-ids) "Must specify at least one user id.")
-  (->> (select-user-role* db user-ids [])
-       (map :role-id)
-       set))
 
-(s/defn insert-role-permissions
-  [db role-id :- s/Int permissions :- #{s/Int} creator-id :- s/Int]
-  (let [xs (map #(hash-map :permission-id % :role-id role-id) permissions)]
+;;----------------------------------------------------------------------
+;; Role Permissions
+;;----------------------------------------------------------------------
+(defn insert-role-permissions
+  [db role-id permission-ids creator-id]
+  (let [xs (map #(hash-map :permission-id % :role-id role-id) permission-ids)]
     (sql/insert-multi-with-create-audits! db :role-permission xs creator-id)))
 
+(def delete-role-permissions-by-role-id       (partial delete* :role-permission "role_id = ?"))
+(def delete-role-permissions-by-permission-id (partial delete* :role-permission "permission_id = ?"))
 
-(s/defn delete-role-permissions-by-role-id
-  [db role-id]
-  (sql/delete! db :role-permission ["role_id = ?" role-id]))
-
-(s/defn delete-role-permissions-by-permission-id
-  [db permission-id]
-  (sql/delete! db :role-permission ["permission_id = ?" permission-id]))
-
-(s/defn delete-role-permissions
-  [db role-id :- s/Int permissions :- #{s/Int}]
-  (let [xs (map #(hash-map :permission-id % :role-id role-id) permissions)]
+(defn delete-role-permissions
+  [db role-id permission-ids]
+  (let [xs (map #(hash-map :permission-id % :role-id role-id) permission-ids)]
     (jdbc/with-db-transaction [txn db]
-      (doseq [permission-id permissions]
+      (doseq [permission-id permission-ids]
         (sql/delete! txn :role-permission ["role_id = ? and permission_id = ?" role-id permission-id])))))
