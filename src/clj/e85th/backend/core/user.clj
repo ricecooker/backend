@@ -17,13 +17,13 @@
             [e85th.commons.email :as email]
             [clojure.string :as str]))
 
-(def duplicate-channel-ex ::duplicate-channel-ex)
-(def password-required-ex ::password-required-ex)
-(def channel-auth-failed-ex ::channel-auth-failed-ex)
-(def channel-verification-failed-ex ::channel-verification-failed-ex)
-(def channel-in-use ::channel-in-use)
-(def token-expired ::token-expired)
-(def token-invalid ::token-invalid)
+(def ^:const duplicate-channel-ex :user/duplicate-channel-ex)
+(def ^:const password-required-ex :user/password-required-ex)
+(def ^:const channel-auth-failed-ex :user/channel-auth-failed-ex)
+(def ^:const channel-verification-failed-ex :user/channel-verification-failed-ex)
+(def ^:const channel-in-use :user/channel-in-use)
+(def ^:const token-expired :user/token-expired)
+(def ^:const token-invalid :user/token-invalid)
 
 (s/defn find-user-all-fields-by-id :- (s/maybe m/UserAllFields)
   "This exists to make it a little bit harder to expose the password digest."
@@ -321,6 +321,8 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Authenticate
+;; Returns the user-id of the successfully authenticated user otherwise
+;; returns nil
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defmulti authenticate
   (fn [res user-auth]
@@ -332,24 +334,20 @@
   (let [{:keys [identifier token]} with-token
         identifier (cond-> identifier
                      (email/valid? identifier) identity
-                     (tel/valid? identifier) tel/normalize)
-        user-id (auth-with-token res identifier token)]
-    (user-id->auth-response res user-id)))
+                     (tel/valid? identifier) tel/normalize)]
+    (auth-with-token res identifier token)))
 
 (defmethod authenticate :with-password
   [res {:keys [with-password]}]
   (let [{:keys [email password]} with-password
-        {:keys [id password-digest]} (some->> (find-email-channel res email)
-                                              :user-id
-                                              (find-user-all-fields-by-id res))]
-
+        {user-id :id password-digest :password-digest} (some->> (find-email-channel res email)
+                                                                :user-id
+                                                                (find-user-all-fields-by-id res))]
     (when-not (seq password-digest)
       (throw (ex/auth :user/invalid-password "Invalid password.")))
-
     (when-not (hashers/check password password-digest)
       (throw (ex/auth :user/invalid-password "Invalid password.")))
-
-    (user-id->auth-response res id)))
+    user-id))
 
 (s/defn verify-channel :- m/Channel
   "Verify the channel if the token is valid. Returns the updated channel or throws an auth exception"
@@ -366,8 +364,8 @@
                       (not verified-at) (assoc :verified-at (t/now)))]
       (update-channel res id chan-data user-id))))
 
-(s/defn reset-password :- m/AuthResponse
-  "Resets the password for the user with the unexpired token."
+(s/defn reset-password :- s/Int
+  "Resets the password for the user with the unexpired token. Returns the user-id for the user whose password was reset."
   [{:keys [db] :as res} token :- s/Str password :- s/Str]
   (let [{:keys [id user-id token-expiration verified-at]} (db/select-channel-by-token db token)
         err (cond
@@ -384,7 +382,7 @@
         (update-user res user-id {:password password} user-id)
         (update-channel res id chan-data user-id)))
 
-    (user-id->auth-response res user-id)))
+    user-id))
 
 
 (s/defn set-roles
