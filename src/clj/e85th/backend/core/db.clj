@@ -17,6 +17,7 @@
         :ret  ::domain/id)
 
 (defn insert*
+  "This is meant to be partialed which is why db doesn't appear first.."
   [table db row user-id]
   (:id (sql/insert! db table row user-id)))
 
@@ -28,6 +29,7 @@
         :ret  nat-int?)
 
 (defn update*
+  "This is meant to be partialed which is why db doesn't appear first.."
   [table where db id row user-id]
   (sql/update! db table (dissoc row :id) [where id] user-id))
 
@@ -38,6 +40,7 @@
         :ret  nat-int?)
 
 (defn delete*
+  "This is meant to be partialed which is why db doesn't appear first.."
   [table where db id]
   (first (sql/delete! db table [where id])))
 
@@ -255,10 +258,9 @@
 
 (defn delete-user-roles
   [db user-id role-ids]
-  (let [xs (map #(hash-map :role-id % :user-id user-id) role-ids)]
-    (jdbc/with-db-transaction [txn db]
-      (doseq [role-id role-ids]
-        (sql/delete! txn :user-role ["user_id = ? and role_id = ?" user-id role-id])))))
+  (jdbc/with-db-transaction [txn db]
+    (doseq [role-id role-ids]
+      (sql/delete! txn :user-role ["user_id = ? and role_id = ?" user-id role-id]))))
 
 
 (def ^:private default-user-role-params
